@@ -1,0 +1,71 @@
+import enum
+import uuid
+from datetime import datetime
+from sqlalchemy import Column, String, Integer, ForeignKey, DateTime, Enum, Boolean
+from sqlalchemy.orm import declarative_base, relationship
+from sqlalchemy.dialects.postgresql import UUID
+
+Base = declarative_base()
+
+class InstanceStatus(enum.Enum):
+    PROVISIONING = "PROVISIONING"
+    RUNNING = "RUNNING"
+    STOPPED = "STOPPED"
+    FAILED = "FAILED"
+    DELETING = "DELETING"
+
+class Role(enum.Enum):
+    ADMIN = "ADMIN"
+    CLIENT = "CLIENT"
+
+class User(Base):
+    __tablename__ = "users"
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    email = Column(String, unique=True, index=True, nullable=False)
+    hashed_password = Column(String, nullable=False)
+    role = Column(Enum(Role), default=Role.CLIENT, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    tenants = relationship("TenantMember", back_populates="user")
+
+class Tenant(Base):
+    __tablename__ = "tenants"
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    name = Column(String, unique=True, index=True, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    members = relationship("TenantMember", back_populates="tenant")
+    quota = relationship("Quota", back_populates="tenant", uselist=False)
+    instances = relationship("Instance", back_populates="tenant")
+
+class TenantMember(Base):
+    __tablename__ = "tenant_members"
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), primary_key=True)
+    tenant_id = Column(UUID(as_uuid=True), ForeignKey("tenants.id"), primary_key=True)
+    is_owner = Column(Boolean, default=False)
+
+    user = relationship("User", back_populates="tenants")
+    tenant = relationship("Tenant", back_populates="members")
+
+class Quota(Base):
+    __tablename__ = "quotas"
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id = Column(UUID(as_uuid=True), ForeignKey("tenants.id"), unique=True)
+    max_vcpu = Column(Integer, default=4)
+    max_ram_mb = Column(Integer, default=8192)
+    max_instances = Column(Integer, default=2)
+
+    tenant = relationship("Tenant", back_populates="quota")
+
+class Instance(Base):
+    __tablename__ = "instances"
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id = Column(UUID(as_uuid=True), ForeignKey("tenants.id"))
+    name = Column(String, nullable=False)
+    vcpu = Column(Integer, nullable=False)
+    ram_mb = Column(Integer, nullable=False)
+    status = Column(Enum(InstanceStatus), default=InstanceStatus.PROVISIONING)
+    ip_address = Column(String, nullable=True) # Заполнится после ответа от Go
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    tenant = relationship("Tenant", back_populates="instances")

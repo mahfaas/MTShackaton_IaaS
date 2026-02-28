@@ -1,0 +1,32 @@
+syntax = "proto3";
+
+package cloud;
+
+// Указываем путь для генерации Go-кода
+option go_package = "/cloud";
+
+// Сервис, который будет запущен на Go (Compute Node)
+service ComputeService {
+  // Запрос на создание ВМ (Docker контейнера)
+  rpc CreateInstance (CreateInstanceRequest) returns (InstanceResponse) {}
+  
+  // Запрос на удаление ВМ
+  rpc DeleteInstance (DeleteInstanceRequest) returns (InstanceResponse) {}
+}
+
+message CreateInstanceRequest {
+  string instance_id = 1; // Уникальный ID из базы Python
+  int32 vcpu = 2;         // Лимит ядер
+  int32 ram_mb = 3;       // Лимит памяти
+  string image = 4;       // Образ (например, "ubuntu:latest" или "alpine")
+}
+
+message DeleteInstanceRequest {
+  string instance_id = 1;
+}
+
+message InstanceResponse {
+  bool success = 1;
+  string message = 2;       // Описание ошибки, если success = false
+  string ip_address = 3;    // Выданный IP адрес (мокаем или берем из docker network)
+}

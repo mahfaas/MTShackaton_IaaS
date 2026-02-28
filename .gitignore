@@ -1,0 +1,15 @@
+# Python
+venv/
+__pycache__/
+*.pyc
+.env
+
+# Go
+compute-node/compute_node
+cloud/
+
+# DB
+pgdata/
+
+# OS
+.DS_Store
