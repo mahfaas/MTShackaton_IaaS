@@ -3,7 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
-	"io" // <-- ДОБАВИЛИ ПАКЕТ IO
+	"io"
 	"log"
 	"net"
 
@@ -12,7 +12,6 @@ import (
 	"github.com/docker/docker/client"
 	"google.golang.org/grpc"
 
-	// Игнорируем красное подчеркивание в VS Code
 	pb "compute-node/cloud"
 )
 
@@ -22,7 +21,7 @@ type server struct {
 }
 
 func (s *server) CreateInstance(ctx context.Context, req *pb.CreateInstanceRequest) (*pb.InstanceResponse, error) {
-	// Добавляем тег :latest, если его нет (Docker API это любит)
+
 	imageName := req.Image
 	if imageName == "alpine" || imageName == "ubuntu" {
 		imageName += ":latest"
@@ -30,17 +29,15 @@ func (s *server) CreateInstance(ctx context.Context, req *pb.CreateInstanceReque
 
 	log.Printf("Received provision request for Instance ID: %s, Image: %s, %d vCPU, %d MB RAM", req.InstanceId, imageName, req.Vcpu, req.RamMb)
 
-	// 1. Убеждаемся, что образ есть локально И ЖДЕМ СКАЧИВАНИЯ
 	out, err := s.dockerCli.ImagePull(ctx, imageName, image.PullOptions{})
 	if err != nil {
 		log.Printf("Error pulling image: %v", err)
 	} else {
-		// КРИТИЧЕСКИ ВАЖНО: читаем поток вывода, чтобы заблокировать код до конца скачивания
+
 		defer out.Close()
 		io.Copy(io.Discard, out)
 	}
 
-	// 2. Настраиваем хард-лимиты
 	memoryBytes := int64(req.RamMb) * 1024 * 1024
 	nanoCpus := int64(req.Vcpu) * 1000000000
 
@@ -53,7 +50,6 @@ func (s *server) CreateInstance(ctx context.Context, req *pb.CreateInstanceReque
 
 	containerName := fmt.Sprintf("iaas-vm-%s", req.InstanceId)
 
-	// 3. Создаем "ВМ" (контейнер)
 	resp, err := s.dockerCli.ContainerCreate(ctx, &container.Config{
 		Image: imageName,
 		Cmd:   []string{"tail", "-f", "/dev/null"},
@@ -63,12 +59,10 @@ func (s *server) CreateInstance(ctx context.Context, req *pb.CreateInstanceReque
 		return &pb.InstanceResponse{Success: false, Message: fmt.Sprintf("Failed to create container: %v", err)}, nil
 	}
 
-	// 4. Запускаем "ВМ"
 	if err := s.dockerCli.ContainerStart(ctx, resp.ID, container.StartOptions{}); err != nil {
 		return &pb.InstanceResponse{Success: false, Message: fmt.Sprintf("Failed to start container: %v", err)}, nil
 	}
 
-	// 5. Получаем IP-адрес
 	inspect, err := s.dockerCli.ContainerInspect(ctx, resp.ID)
 	ipAddress := "unknown"
 	if err == nil && inspect.NetworkSettings != nil {
