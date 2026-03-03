@@ -19,10 +19,12 @@ message CreateInstanceRequest {
   int32 vcpu = 2;         // Лимит ядер
   int32 ram_mb = 3;       // Лимит памяти
   string image = 4;       // Образ (например, "ubuntu:latest" или "alpine")
+  string tenant_id = 5;   // ID тенанта для создания изолированной сети
 }
 
 message DeleteInstanceRequest {
   string instance_id = 1;
+  string tenant_id = 2;
 }
 
 message InstanceResponse {

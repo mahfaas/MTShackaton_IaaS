@@ -13,7 +13,7 @@ _sym_db = _symbol_database.Default()
 
 
 
-DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x0b\x63loud.proto\x12\x05\x63loud\"Y\n\x15\x43reateInstanceRequest\x12\x13\n\x0binstance_id\x18\x01 \x01(\t\x12\x0c\n\x04vcpu\x18\x02 \x01(\x05\x12\x0e\n\x06ram_mb\x18\x03 \x01(\x05\x12\r\n\x05image\x18\x04 \x01(\t\",\n\x15\x44\x65leteInstanceRequest\x12\x13\n\x0binstance_id\x18\x01 \x01(\t\"H\n\x10InstanceResponse\x12\x0f\n\x07success\x18\x01 \x01(\x08\x12\x0f\n\x07message\x18\x02 \x01(\t\x12\x12\n\nip_address\x18\x03 \x01(\t2\xa6\x01\n\x0e\x43omputeService\x12I\n\x0e\x43reateInstance\x12\x1c.cloud.CreateInstanceRequest\x1a\x17.cloud.InstanceResponse\"\x00\x12I\n\x0e\x44\x65leteInstance\x12\x1c.cloud.DeleteInstanceRequest\x1a\x17.cloud.InstanceResponse\"\x00\x42\x08Z\x06/cloudb\x06proto3')
+DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x0b\x63loud.proto\x12\x05\x63loud\"l\n\x15\x43reateInstanceRequest\x12\x13\n\x0binstance_id\x18\x01 \x01(\t\x12\x0c\n\x04vcpu\x18\x02 \x01(\x05\x12\x0e\n\x06ram_mb\x18\x03 \x01(\x05\x12\r\n\x05image\x18\x04 \x01(\t\x12\x11\n\ttenant_id\x18\x05 \x01(\t\"?\n\x15\x44\x65leteInstanceRequest\x12\x13\n\x0binstance_id\x18\x01 \x01(\t\x12\x11\n\ttenant_id\x18\x02 \x01(\t\"H\n\x10InstanceResponse\x12\x0f\n\x07success\x18\x01 \x01(\x08\x12\x0f\n\x07message\x18\x02 \x01(\t\x12\x12\n\nip_address\x18\x03 \x01(\t2\xa6\x01\n\x0e\x43omputeService\x12I\n\x0e\x43reateInstance\x12\x1c.cloud.CreateInstanceRequest\x1a\x17.cloud.InstanceResponse\"\x00\x12I\n\x0e\x44\x65leteInstance\x12\x1c.cloud.DeleteInstanceRequest\x1a\x17.cloud.InstanceResponse\"\x00\x42\x08Z\x06/cloudb\x06proto3')
 
 _globals = globals()
 _builder.BuildMessageAndEnumDescriptors(DESCRIPTOR, _globals)
@@ -22,11 +22,11 @@ if _descriptor._USE_C_DESCRIPTORS == False:
   DESCRIPTOR._options = None
   DESCRIPTOR._serialized_options = b'Z\006/cloud'
   _globals['_CREATEINSTANCEREQUEST']._serialized_start=22
-  _globals['_CREATEINSTANCEREQUEST']._serialized_end=111
-  _globals['_DELETEINSTANCEREQUEST']._serialized_start=113
-  _globals['_DELETEINSTANCEREQUEST']._serialized_end=157
-  _globals['_INSTANCERESPONSE']._serialized_start=159
-  _globals['_INSTANCERESPONSE']._serialized_end=231
-  _globals['_COMPUTESERVICE']._serialized_start=234
-  _globals['_COMPUTESERVICE']._serialized_end=400
+  _globals['_CREATEINSTANCEREQUEST']._serialized_end=130
+  _globals['_DELETEINSTANCEREQUEST']._serialized_start=132
+  _globals['_DELETEINSTANCEREQUEST']._serialized_end=195
+  _globals['_INSTANCERESPONSE']._serialized_start=197
+  _globals['_INSTANCERESPONSE']._serialized_end=269
+  _globals['_COMPUTESERVICE']._serialized_start=272
+  _globals['_COMPUTESERVICE']._serialized_end=438
 # @@protoc_insertion_point(module_scope)

@@ -4,15 +4,15 @@ services:
   db:
     image: postgres:15-alpine
     environment:
-      POSTGRES_USER: iaas_user
-      POSTGRES_PASSWORD: iaas_password
-      POSTGRES_DB: iaas_db
+      POSTGRES_USER: ${POSTGRES_USER:-iaas_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-iaas_password}
+      POSTGRES_DB: ${POSTGRES_DB:-iaas_db}
     ports:
       - "5432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U iaas_user -d iaas_db"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-iaas_user} -d ${POSTGRES_DB:-iaas_db}"]
       interval: 5s
       timeout: 5s
       retries: 5
@@ -32,9 +32,8 @@ services:
     depends_on:
       db:
         condition: service_healthy
-    environment:
-      - DATABASE_URL=postgresql+asyncpg://iaas_user:iaas_password@db:5432/iaas_db
-      - COMPUTE_NODE_URL=compute-node:50051
+    env_file:
+      - .env
 
   compute-node:
     build:
