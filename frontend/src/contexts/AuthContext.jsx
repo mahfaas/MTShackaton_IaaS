@@ -8,8 +8,11 @@ export function AuthProvider({ children }) {
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
+        // Clean up stale tokens from old localStorage bug
+        localStorage.removeItem('token');
+
         const fetchUser = async () => {
-            const token = localStorage.getItem('token');
+            const token = sessionStorage.getItem('token');
             if (!token) {
                 setLoading(false);
                 return;
@@ -19,7 +22,7 @@ export function AuthProvider({ children }) {
                 setUser(response.data);
             } catch (error) {
                 console.error("Failed to fetch user:", error);
-                localStorage.removeItem('token');
+                sessionStorage.removeItem('token');
             } finally {
                 setLoading(false);
             }
@@ -28,12 +31,12 @@ export function AuthProvider({ children }) {
     }, []);
 
     const login = (token, userData) => {
-        localStorage.setItem('token', token);
+        sessionStorage.setItem('token', token);
         setUser(userData);
     };
 
     const logout = () => {
-        localStorage.removeItem('token');
+        sessionStorage.removeItem('token');
         setUser(null);
     };
 

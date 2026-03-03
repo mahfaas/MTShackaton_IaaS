@@ -3,7 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.database import engine
 from app.models.base import Base
 
-from app.routers import auth, instances, admin
+from app.routers import auth, instances, admin, terminal
 
 app = FastAPI(title="Hackathon IaaS API", version="1.0.0")
 
@@ -23,6 +23,7 @@ async def startup():
 app.include_router(auth.router, prefix="/api/v1")
 app.include_router(instances.router, prefix="/api/v1")
 app.include_router(admin.router, prefix="/api/v1")
+app.include_router(terminal.router, prefix="/api/v1")
 
 @app.get("/health")
 def health_check():

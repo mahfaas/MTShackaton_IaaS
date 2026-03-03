@@ -6,11 +6,13 @@ import (
 	"io"
 	"log"
 	"net"
+	"strings"
 
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/image"
 	"github.com/docker/docker/api/types/network"
 	"github.com/docker/docker/client"
+	"github.com/docker/go-connections/nat"
 	"google.golang.org/grpc"
 
 	pb "compute-node/cloud"
@@ -65,11 +67,25 @@ func (s *server) CreateInstance(ctx context.Context, req *pb.CreateInstanceReque
 	memoryBytes := int64(req.RamMb) * 1024 * 1024
 	nanoCpus := int64(req.Vcpu) * 1000000000
 
+	// Determine if this is a web server image
+	isWebServer := strings.Contains(imageName, "nginx")
+
 	hostConfig := &container.HostConfig{
 		Resources: container.Resources{
 			Memory:   memoryBytes,
 			NanoCPUs: nanoCpus,
 		},
+	}
+
+	// For web server images, expose port 80 to a random host port
+	exposedPorts := map[nat.Port]struct{}{}
+	if isWebServer {
+		exposedPorts["80/tcp"] = struct{}{}
+		hostConfig.PortBindings = nat.PortMap{
+			"80/tcp": []nat.PortBinding{
+				{HostIP: "0.0.0.0", HostPort: "0"}, // 0 = random available port
+			},
+		}
 	}
 
 	netConfig := &network.NetworkingConfig{
@@ -82,10 +98,16 @@ func (s *server) CreateInstance(ctx context.Context, req *pb.CreateInstanceReque
 
 	containerName := fmt.Sprintf("iaas-vm-%s", req.InstanceId)
 
-	resp, err := s.dockerCli.ContainerCreate(ctx, &container.Config{
-		Image: imageName,
-		Cmd:   []string{"tail", "-f", "/dev/null"},
-	}, hostConfig, netConfig, nil, containerName)
+	// For web servers, use default CMD (starts nginx). For others, use tail keepalive.
+	containerConfig := &container.Config{
+		Image:        imageName,
+		ExposedPorts: exposedPorts,
+	}
+	if !isWebServer {
+		containerConfig.Cmd = []string{"tail", "-f", "/dev/null"}
+	}
+
+	resp, err := s.dockerCli.ContainerCreate(ctx, containerConfig, hostConfig, netConfig, nil, containerName)
 
 	if err != nil {
 		return &pb.InstanceResponse{Success: false, Message: fmt.Sprintf("Failed to create container: %v", err)}, nil
@@ -97,12 +119,30 @@ func (s *server) CreateInstance(ctx context.Context, req *pb.CreateInstanceReque
 
 	inspect, err := s.dockerCli.ContainerInspect(ctx, resp.ID)
 	ipAddress := "unknown"
+	hostPort := ""
 	if err == nil && inspect.NetworkSettings != nil {
-		ipAddress = inspect.NetworkSettings.IPAddress
+		// When using custom network (SDN), IP is in Networks map, not root IPAddress
+		if netInfo, ok := inspect.NetworkSettings.Networks[networkName]; ok && netInfo.IPAddress != "" {
+			ipAddress = netInfo.IPAddress
+		} else if inspect.NetworkSettings.IPAddress != "" {
+			ipAddress = inspect.NetworkSettings.IPAddress
+		}
+
+		// Get the mapped host port for web servers
+		if isWebServer {
+			if portBindings, ok := inspect.NetworkSettings.Ports["80/tcp"]; ok && len(portBindings) > 0 {
+				hostPort = portBindings[0].HostPort
+			}
+		}
 	}
 
-	log.Printf("Instance %s provisioned successfully with IP: %s", req.InstanceId, ipAddress)
-	return &pb.InstanceResponse{Success: true, Message: "Running", IpAddress: ipAddress}, nil
+	message := "Running"
+	if hostPort != "" {
+		message = fmt.Sprintf("Running|port:%s", hostPort)
+	}
+
+	log.Printf("Instance %s provisioned successfully with IP: %s, hostPort: %s", req.InstanceId, ipAddress, hostPort)
+	return &pb.InstanceResponse{Success: true, Message: message, IpAddress: ipAddress}, nil
 }
 
 func (s *server) DeleteInstance(ctx context.Context, req *pb.DeleteInstanceRequest) (*pb.InstanceResponse, error) {

@@ -64,7 +64,9 @@ class Instance(Base):
     name = Column(String, nullable=False)
     vcpu = Column(Integer, nullable=False)
     ram_mb = Column(Integer, nullable=False)
+    image = Column(String, default="ubuntu:22.04")
     status = Column(Enum(InstanceStatus), default=InstanceStatus.PROVISIONING)
+    tags = Column(String, default="")
     ip_address = Column(String, nullable=True) # Заполнится после ответа от Go
     created_at = Column(DateTime, default=datetime.utcnow)
 

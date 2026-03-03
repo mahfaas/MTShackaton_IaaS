@@ -1,9 +1,10 @@
 import { useState, useEffect } from 'react';
 import { api } from '../lib/api';
 import CreateInstanceModal from '../components/CreateInstanceModal';
-import { Activity, Server, Cpu, LogOut, Plus, CloudRain, Clock, Trash2, PieChart } from 'lucide-react';
+import { Activity, Server, Cpu, LogOut, Plus, CloudRain, Clock, Trash2, PieChart, Menu, TerminalSquare } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
+import TerminalModal from '../components/TerminalModal';
 
 export default function Dashboard() {
     const { user, logout } = useAuth();
@@ -13,14 +14,16 @@ export default function Dashboard() {
     const [loading, setLoading] = useState(true);
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [activeTab, setActiveTab] = useState('compute');
+    const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+    const [terminalInstance, setTerminalInstance] = useState(null);
 
     const fetchData = async () => {
         try {
             const [instancesRes, quotasRes] = await Promise.all([
-                api.get('/instances'),
-                api.get('/instances/quotas')
+                api.get('/instances').catch(() => ({ data: [] })),
+                api.get('/instances/quotas').catch(() => ({ data: null }))
             ]);
-            setInstances(instancesRes.data);
+            setInstances(instancesRes.data || []);
             setQuotas(quotasRes.data);
         } catch (err) {
             console.error("Failed to load dashboard data:", err);
@@ -54,16 +57,43 @@ export default function Dashboard() {
         navigate('/login');
     };
 
-    if (loading && !quotas) return (
+    if (loading && !quotas && !instances.length) return (
         <div className="min-h-screen flex items-center justify-center bg-gray-50">
             <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-black"></div>
         </div>
     );
 
     return (
-        <div className="min-h-screen flex bg-gray-50/50">
-            {/* Sidebar */}
-            <div className="w-64 bg-white border-r border-gray-100 p-6 flex flex-col hidden md:flex">
+        <div className="min-h-screen flex flex-col md:flex-row bg-gray-50/50">
+            {/* Mobile Header */}
+            <div className="md:hidden bg-white border-b border-gray-100 px-4 py-3 flex items-center justify-between sticky top-0 z-40">
+                <div className="flex items-center gap-3 font-semibold">
+                    <div className="bg-black text-white p-1.5 rounded-lg">
+                        <CloudRain size={16} />
+                    </div>
+                    <span className="text-sm">Cloud Platform</span>
+                </div>
+                <div className="flex items-center gap-1">
+                    <button
+                        onClick={() => setActiveTab('compute')}
+                        className={`p-2 rounded-xl transition-colors ${activeTab === 'compute' ? 'bg-black text-white' : 'text-gray-400'}`}
+                    >
+                        <Server size={18} />
+                    </button>
+                    <button
+                        onClick={() => setActiveTab('monitoring')}
+                        className={`p-2 rounded-xl transition-colors ${activeTab === 'monitoring' ? 'bg-black text-white' : 'text-gray-400'}`}
+                    >
+                        <PieChart size={18} />
+                    </button>
+                    <button onClick={handleLogout} className="p-2 text-gray-400 hover:text-red-500 rounded-xl transition-colors ml-1">
+                        <LogOut size={18} />
+                    </button>
+                </div>
+            </div>
+
+            {/* Desktop Sidebar */}
+            <div className="w-64 bg-white border-r border-gray-100 p-6 flex-col hidden md:flex sticky top-0 h-screen">
                 <div className="flex items-center gap-3 font-semibold text-lg mb-10">
                     <div className="bg-black text-white p-2 rounded-xl">
                         <CloudRain size={20} />
@@ -95,7 +125,7 @@ export default function Dashboard() {
             </div>
 
             {/* Main Content */}
-            <div className="flex-1 p-8 md:p-12 max-w-6xl mx-auto overflow-y-auto w-full">
+            <div className="flex-1 p-4 md:p-12 max-w-6xl mx-auto overflow-y-auto w-full">
                 {activeTab === 'compute' ? (
                     <>
                         <div className="flex justify-between items-end mb-10">
@@ -142,7 +172,7 @@ export default function Dashboard() {
                                 <div className="text-sm font-medium text-gray-500 mb-4 flex items-center gap-2">
                                     <Activity size={16} /> RAM Usage
                                 </div>
-                                <div className="text-3xl font-semibold">{(quotas?.used_ram / 1024).toFixed(1)} <span className="text-lg text-gray-400 font-normal">/ {(quotas?.max_ram_mb / 1024).toFixed(1)} GB</span></div>
+                                <div className="text-3xl font-semibold">{((quotas?.used_ram || 0) / 1024).toFixed(1)} <span className="text-lg text-gray-400 font-normal">/ {((quotas?.max_ram_mb || 0) / 1024).toFixed(1)} GB</span></div>
                                 <div className="mt-4 h-1.5 w-full bg-gray-100 rounded-full overflow-hidden">
                                     <div
                                         className={`h-full rounded-full transition-all duration-500 ${quotas?.used_ram >= quotas?.max_ram_mb ? 'bg-red-500' : 'bg-purple-500'}`}
@@ -153,13 +183,14 @@ export default function Dashboard() {
                         </div>
 
                         {/* Instance List */}
-                        <div className="apple-card p-0 overflow-hidden">
+                        <div className="apple-card p-0 overflow-hidden overflow-x-auto">
                             <table className="w-full text-left text-sm whitespace-nowrap">
                                 <thead className="bg-gray-50/50 text-gray-500 font-medium border-b border-gray-100">
                                     <tr>
                                         <th className="px-6 py-4">Name</th>
                                         <th className="px-6 py-4">Status</th>
                                         <th className="px-6 py-4">Specs</th>
+                                        <th className="px-6 py-4">Tags</th>
                                         <th className="px-6 py-4">IP Address</th>
                                         <th className="px-6 py-4">Created</th>
                                         <th className="px-6 py-4 text-right">Actions</th>
@@ -181,28 +212,62 @@ export default function Dashboard() {
                                             <td className="px-6 py-5 text-gray-500">
                                                 {inst.vcpu} vCPU • {inst.ram_mb / 1024} GB • {inst.image}
                                             </td>
-                                            <td className="px-6 py-5 font-mono text-gray-600 text-xs">
-                                                {inst.ip_address || '—'}
+                                            <td className="px-6 py-5">
+                                                <div className="flex flex-wrap gap-1">
+                                                    {inst.tags ? inst.tags.split(',').map(tag => tag.trim()).filter(Boolean).map(tag => (
+                                                        <span key={tag} className="px-2 py-1 bg-gray-100 text-gray-600 rounded-lg text-xs font-medium border border-gray-200">
+                                                            {tag}
+                                                        </span>
+                                                    )) : <span className="text-gray-400 text-xs italic">—</span>}
+                                                </div>
+                                            </td>
+                                            <td className="px-6 py-5 font-mono text-xs">
+                                                {inst.ip_address && inst.ip_address.includes('|port:') ? (
+                                                    <>
+                                                        <a
+                                                            href={`http://localhost:${inst.ip_address.split('|port:')[1]}`}
+                                                            target="_blank"
+                                                            rel="noopener noreferrer"
+                                                            className="text-blue-600 hover:text-blue-800 underline font-semibold"
+                                                        >
+                                                            🌐 Open :{inst.ip_address.split('|port:')[1]}
+                                                        </a>
+                                                        <div className="text-gray-400 text-[10px] mt-0.5">{inst.ip_address.split('|')[0]}</div>
+                                                    </>
+                                                ) : (
+                                                    <span className="text-gray-600">{inst.ip_address || '—'}</span>
+                                                )}
                                             </td>
                                             <td className="px-6 py-5 text-gray-500 flex items-center gap-2">
                                                 <Clock size={14} className="text-gray-400" />
                                                 {new Date(inst.created_at).toLocaleDateString()}
                                             </td>
-                                            <td className="px-6 py-5 text-right flex justify-end">
-                                                <button
-                                                    onClick={() => handleDelete(inst.id)}
-                                                    disabled={inst.status === 'DELETING' || inst.status === 'DELETED'}
-                                                    className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                                                    title="Delete Instance"
-                                                >
-                                                    <Trash2 size={16} />
-                                                </button>
+                                            <td className="px-6 py-5 text-right">
+                                                <div className="flex items-center justify-end gap-1">
+                                                    {inst.status === 'RUNNING' && (
+                                                        <button
+                                                            onClick={() => setTerminalInstance(inst)}
+                                                            className="p-2 text-gray-400 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors"
+                                                            title="Open Terminal"
+                                                        >
+                                                            <TerminalSquare size={16} />
+                                                        </button>
+                                                    )}
+                                                    <button
+                                                        onClick={() => handleDelete(inst.id)}
+                                                        disabled={inst.status === 'DELETING' || inst.status === 'DELETED'}
+                                                        className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                                                        title="Delete Instance"
+                                                    >
+                                                        <Trash2 size={16} />
+                                                    </button>
+                                                </div>
                                             </td>
                                         </tr>
                                     ))}
                                     {instances.length === 0 && (
                                         <tr>
-                                            <td colSpan="6" className="px-6 py-12 text-center text-gray-500">
+                                            <td colSpan="7" className="px-6 py-12 text-center text-gray-500">
                                                 No instances deployed yet. Click "Deploy Instance" to get started.
                                             </td>
                                         </tr>
@@ -289,8 +354,15 @@ export default function Dashboard() {
             <CreateInstanceModal
                 isOpen={isModalOpen}
                 onClose={() => setIsModalOpen(false)}
-                tenantId={user?.tenant_id} /* Fallback, backend no longer relies heavily on this from req but we pass it anyway */
+                tenantId={user?.tenant_id}
                 onCreated={() => fetchData()}
+            />
+
+            <TerminalModal
+                isOpen={!!terminalInstance}
+                onClose={() => setTerminalInstance(null)}
+                instanceId={terminalInstance?.id}
+                instanceName={terminalInstance?.name}
             />
         </div>
     );

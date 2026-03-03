@@ -67,6 +67,27 @@ async def get_me(current_user: User = Depends(get_current_user), db: AsyncSessio
     res = await db.execute(query)
     member = res.scalars().first()
     
+    # Auto-provision tenant and quota for users without one (fixes 0/0 quotas)
+    if not member:
+        tenant_name = current_user.email.split('@')[0] + "-tenant"
+        # Check if tenant name already exists (avoid unique constraint violation)
+        existing = await db.execute(select(Tenant).where(Tenant.name == tenant_name))
+        tenant = existing.scalar_one_or_none()
+        if not tenant:
+            tenant = Tenant(name=tenant_name)
+            db.add(tenant)
+            await db.flush()
+        
+        member = TenantMember(user_id=current_user.id, tenant_id=tenant.id, is_owner=True)
+        db.add(member)
+        
+        # Create quota if not exists
+        quota_check = await db.execute(select(Quota).where(Quota.tenant_id == tenant.id))
+        if not quota_check.scalar_one_or_none():
+            db.add(Quota(tenant_id=tenant.id, max_vcpu=4, max_ram_mb=8192, max_instances=2))
+        
+        await db.commit()
+    
     return {
         "id": current_user.id,
         "email": current_user.email,

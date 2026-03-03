@@ -29,7 +29,14 @@ async def provision_worker(instance_id: str, tenant_id: str, vcpu: int, ram_mb: 
             
             if grpc_result["success"]:
                 instance.status = InstanceStatus.RUNNING
-                instance.ip_address = grpc_result.get("ip_address", "unknown")
+                ip = grpc_result.get("ip_address", "unknown")
+                msg = grpc_result.get("message", "")
+                # Parse port mapping from gRPC message (format: "Running|port:XXXX")
+                if "|port:" in msg:
+                    port = msg.split("|port:")[1]
+                    instance.ip_address = f"{ip}|port:{port}"
+                else:
+                    instance.ip_address = ip
             else:
                 instance.status = InstanceStatus.FAILED
                 print(f"Provisioning failed: {grpc_result.get('message')}")
@@ -47,7 +54,7 @@ async def provision_worker(instance_id: str, tenant_id: str, vcpu: int, ram_mb: 
                 await db.commit()
             print(f"Background worker failed: {e}")
 
-async def create_instance_service(db: AsyncSession, tenant_id: str, name: str, vcpu: int, ram_mb: int, image: str):
+async def create_instance_service(db: AsyncSession, tenant_id: str, name: str, vcpu: int, ram_mb: int, image: str, tags: str = ""):
     """Business logic combining quota calculation and DB persistence."""
     # 1. Row-level Lock for Transaction (SELECT ... FOR UPDATE) to fix Race Condition
     query = select(Quota).where(Quota.tenant_id == tenant_id).with_for_update()
@@ -84,7 +91,9 @@ async def create_instance_service(db: AsyncSession, tenant_id: str, name: str, v
         name=name,
         vcpu=vcpu,
         ram_mb=ram_mb,
-        status=InstanceStatus.PROVISIONING
+        image=image,
+        status=InstanceStatus.PROVISIONING,
+        tags=tags
     )
     db.add(new_instance)
     await db.commit()
@@ -117,7 +126,15 @@ async def get_tenant_quotas_usage(db: AsyncSession, tenant_id: str) -> dict:
     quota = result.scalar_one_or_none()
     
     if not quota:
-        return None
+        # Default fallback for users who might not have quota row created
+        return {
+            "max_vcpu": 4,
+            "max_ram_mb": 8192,
+            "max_instances": 2,
+            "used_vcpu": 0,
+            "used_ram": 0,
+            "used_instances": 0
+        }
 
     usage_query = select(
         func.sum(Instance.vcpu).label("used_vcpu"),

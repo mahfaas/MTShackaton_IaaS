@@ -35,7 +35,8 @@ async def create_instance(
         name=req.name,
         vcpu=req.vcpu,
         ram_mb=req.ram_mb,
-        image=req.image
+        image=req.image,
+        tags=req.tags
     )
     
     if not service_result["success"]:
@@ -59,7 +60,8 @@ async def create_instance(
         "name": instance.name,
         "vcpu": instance.vcpu,
         "ram_mb": instance.ram_mb,
-        "image": req.image,
+        "image": instance.image,
+        "tags": instance.tags,
         "status": instance.status.value,
         "ip_address": instance.ip_address,
         "created_at": instance.created_at

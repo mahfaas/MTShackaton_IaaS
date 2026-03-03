@@ -7,8 +7,21 @@ export default function CreateInstanceModal({ isOpen, onClose, tenantId, onCreat
     const [vcpu, setVcpu] = useState(1);
     const [ram, setRam] = useState(1024);
     const [image, setImage] = useState('ubuntu:22.04');
+    const [tags, setTags] = useState('');
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
+
+    // Reset form when modal opens
+    useEffect(() => {
+        if (isOpen) {
+            setName('');
+            setVcpu(1);
+            setRam(1024);
+            setImage('ubuntu:22.04');
+            setTags('');
+            setError('');
+        }
+    }, [isOpen]);
 
     if (!isOpen) return null;
 
@@ -23,7 +36,8 @@ export default function CreateInstanceModal({ isOpen, onClose, tenantId, onCreat
                 name,
                 vcpu: parseInt(vcpu),
                 ram_mb: parseInt(ram),
-                image
+                image,
+                tags
             });
             onCreated();
             onClose();
@@ -68,6 +82,17 @@ export default function CreateInstanceModal({ isOpen, onClose, tenantId, onCreat
                         />
                     </div>
 
+                    <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2 ml-1">Tags (comma separated)</label>
+                        <input
+                            type="text"
+                            placeholder="prod, frontend, web"
+                            value={tags}
+                            onChange={(e) => setTags(e.target.value)}
+                            className="apple-input"
+                        />
+                    </div>
+
                     <div className="grid grid-cols-2 gap-4">
                         <div>
                             <label className="block text-sm font-medium text-gray-700 mb-2 ml-1 flex items-center gap-2">
@@ -103,15 +128,15 @@ export default function CreateInstanceModal({ isOpen, onClose, tenantId, onCreat
 
                     <div>
                         <label className="block text-sm font-medium text-gray-700 mb-2 ml-1">OS Image</label>
-                        <div className="grid grid-cols-2 gap-3">
-                            {['ubuntu:22.04', 'alpine:3.18'].map(img => (
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                            {['ubuntu:22.04', 'alpine:3.18', 'debian:12', 'nginx:latest'].map(img => (
                                 <button
                                     key={img}
                                     type="button"
                                     onClick={() => setImage(img)}
                                     className={`p-4 rounded-2xl border text-left transition-all ${image === img
-                                            ? 'border-blue-500 bg-blue-50/50 ring-1 ring-blue-500'
-                                            : 'border-gray-200 hover:border-gray-300 bg-white'
+                                        ? 'border-blue-500 bg-blue-50/50 ring-1 ring-blue-500'
+                                        : 'border-gray-200 hover:border-gray-300 bg-white'
                                         }`}
                                 >
                                     <div className="font-medium text-gray-900">{img.split(':')[0].toUpperCase()}</div>

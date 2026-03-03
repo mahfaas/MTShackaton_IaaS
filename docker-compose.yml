@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   db:
     image: postgres:15-alpine
@@ -12,7 +10,7 @@ services:
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-iaas_user} -d ${POSTGRES_DB:-iaas_db}"]
+      test: [ "CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-iaas_user} -d ${POSTGRES_DB:-iaas_db}" ]
       interval: 5s
       timeout: 5s
       retries: 5
@@ -22,11 +20,11 @@ services:
       context: .
       dockerfile: ./control-plane/Dockerfile
     command: >
-      bash -c "python -m grpc_tools.protoc -I/proto --python_out=/app --grpc_python_out=/app /proto/cloud.proto && 
-      uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload"
+      bash -c "python -m grpc_tools.protoc -I/proto --python_out=/app --grpc_python_out=/app /proto/cloud.proto &&  uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload"
     volumes:
       - ./control-plane:/app
       - ./proto:/proto
+      - /var/run/docker.sock:/var/run/docker.sock
     ports:
       - "8000:8000"
     depends_on:

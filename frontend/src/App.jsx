@@ -10,7 +10,7 @@ const ProtectedRoute = ({ children, allowedRoles }) => {
 
   if (loading) return null; // or a spinner
 
-  const token = localStorage.getItem('token');
+  const token = sessionStorage.getItem('token');
   if (!token || !user) {
     return <Navigate to="/login" replace />;
   }

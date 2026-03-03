@@ -31,7 +31,7 @@ export default function Register() {
             });
             const token = tokenResponse.data.access_token;
 
-            localStorage.setItem('token', token);
+            sessionStorage.setItem('token', token);
             const userResponse = await api.get('/auth/me');
 
             login(token, userResponse.data);
@@ -60,7 +60,7 @@ export default function Register() {
                     </div>
                 )}
 
-                <form onSubmit={handleRegister} className="space-y-4">
+                <form onSubmit={handleRegister} className="space-y-4" autoComplete="off" data-form-type="other">
                     <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1 ml-1">Email</label>
                         <input
@@ -70,6 +70,9 @@ export default function Register() {
                             className="apple-input"
                             required
                             placeholder="user@example.com"
+                            autoComplete="nope"
+                            data-lpignore="true"
+                            data-form-type="other"
                         />
                     </div>
                     <div>

@@ -7,8 +7,8 @@ import { useAuth } from '../contexts/AuthContext';
 export default function Login() {
     const { login } = useAuth();
     const [showPassword, setShowPassword] = useState(false);
-    const [email, setEmail] = useState('user@iaas.local');
-    const [password, setPassword] = useState('user');
+    const [email, setEmail] = useState('');
+    const [password, setPassword] = useState('');
     const [error, setError] = useState('');
     const [loading, setLoading] = useState(false);
     const navigate = useNavigate();
@@ -29,7 +29,7 @@ export default function Login() {
             const token = tokenResponse.data.access_token;
 
             // Set token temporarily to fetch user
-            localStorage.setItem('token', token);
+            sessionStorage.setItem('token', token);
             const userResponse = await api.get('/auth/me');
 
             login(token, userResponse.data);
@@ -63,7 +63,7 @@ export default function Login() {
                     </div>
                 )}
 
-                <form onSubmit={handleLogin} className="space-y-4">
+                <form onSubmit={handleLogin} className="space-y-4" autoComplete="off" data-form-type="other">
                     <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1 ml-1">Email</label>
                         <input
@@ -71,6 +71,9 @@ export default function Login() {
                             value={email}
                             onChange={(e) => setEmail(e.target.value)}
                             className="apple-input"
+                            autoComplete="nope"
+                            data-lpignore="true"
+                            data-form-type="other"
                             required
                         />
                     </div>
@@ -82,6 +85,9 @@ export default function Login() {
                                 value={password}
                                 onChange={(e) => setPassword(e.target.value)}
                                 className="apple-input w-full pr-10"
+                                autoComplete="off"
+                                data-lpignore="true"
+                                data-form-type="other"
                                 required
                             />
                             <button
