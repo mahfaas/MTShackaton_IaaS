@@ -17,8 +17,16 @@ app.add_middleware(
 
 @app.on_event("startup")
 async def startup():
+    import asyncio
     async with engine.begin() as conn:
+        # Ensure HIBERNATING enum value exists in PostgreSQL
+        await conn.execute(
+            __import__('sqlalchemy').text("ALTER TYPE instancestatus ADD VALUE IF NOT EXISTS 'HIBERNATING'")
+        )
         await conn.run_sync(Base.metadata.create_all)
+    # Start hibernation monitor in background
+    from app.services.instance import hibernation_monitor
+    asyncio.create_task(hibernation_monitor())
 
 app.include_router(auth.router, prefix="/api/v1")
 app.include_router(instances.router, prefix="/api/v1")

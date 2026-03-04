@@ -38,14 +38,20 @@ func (s *server) CreateInstance(ctx context.Context, req *pb.CreateInstanceReque
 
 	log.Printf("Received provision request for Instance ID: %s, Tenant: %s, Image: %s", req.InstanceId, req.TenantId, imageName)
 
-	// 1. Pull Image (with early return on failure)
+	// 1. Pull Image (try pull, fallback to local)
 	out, err := s.dockerCli.ImagePull(ctx, imageName, image.PullOptions{})
 	if err != nil {
-		log.Printf("Error pulling image %s: %v", imageName, err)
-		return &pb.InstanceResponse{Success: false, Message: fmt.Sprintf("Failed to pull image: %v", err)}, nil
+		// Pull failed — check if image exists locally (imported/snapshot images)
+		_, _, inspectErr := s.dockerCli.ImageInspectWithRaw(ctx, imageName)
+		if inspectErr != nil {
+			log.Printf("Image %s not found locally and cannot pull: %v", imageName, err)
+			return &pb.InstanceResponse{Success: false, Message: fmt.Sprintf("Failed to pull image: %v", err)}, nil
+		}
+		log.Printf("Image %s not pullable but found locally, proceeding", imageName)
+	} else {
+		defer out.Close()
+		io.Copy(io.Discard, out)
 	}
-	defer out.Close()
-	io.Copy(io.Discard, out)
 
 	// 2. Network Isolation (SDN emulation)
 	networkName := fmt.Sprintf("tenant-%s", req.TenantId)

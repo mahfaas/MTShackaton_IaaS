@@ -213,3 +213,80 @@ async def start_worker(instance_id: str):
                 await db.commit()
         except Exception as e:
             print(f"Background start worker failed: {e}")
+
+async def hibernate_worker(instance_id: str):
+    """Hibernate (freeze) an instance via docker pause."""
+    from app.routers.terminal import docker_api
+    async with AsyncSessionLocal() as db:
+        try:
+            loop = asyncio.get_event_loop()
+            status, _ = await loop.run_in_executor(
+                None, docker_api, "POST", f"/containers/iaas-vm-{instance_id}/pause"
+            )
+            query = select(Instance).where(Instance.id == instance_id)
+            result = await db.execute(query)
+            instance = result.scalar_one_or_none()
+            if instance:
+                if status in (204,):
+                    instance.status = InstanceStatus.HIBERNATING
+                else:
+                    print(f"Hibernate pause returned status {status}")
+                db.add(instance)
+                await db.commit()
+        except Exception as e:
+            print(f"Background hibernate worker failed: {e}")
+
+async def wake_worker(instance_id: str):
+    """Wake (unfreeze) an instance via docker unpause."""
+    from app.routers.terminal import docker_api
+    async with AsyncSessionLocal() as db:
+        try:
+            loop = asyncio.get_event_loop()
+            status, _ = await loop.run_in_executor(
+                None, docker_api, "POST", f"/containers/iaas-vm-{instance_id}/unpause"
+            )
+            query = select(Instance).where(Instance.id == instance_id)
+            result = await db.execute(query)
+            instance = result.scalar_one_or_none()
+            if instance:
+                if status in (204,):
+                    instance.status = InstanceStatus.RUNNING
+                else:
+                    print(f"Wake unpause returned status {status}")
+                db.add(instance)
+                await db.commit()
+        except Exception as e:
+            print(f"Background wake worker failed: {e}")
+
+# ===== HIBERNATION MONITOR =====
+
+HIBERNATE_IDLE_SECONDS = 1800  # 30 minutes idle → auto-hibernate
+
+async def hibernation_monitor():
+    """Periodic background task: auto-hibernates idle VMs."""
+    from app.grpc_client import get_container_stats_via_grpc
+    
+    while True:
+        try:
+            async with AsyncSessionLocal() as db:
+                query = select(Instance).where(Instance.status == InstanceStatus.RUNNING)
+                result = await db.execute(query)
+                running = result.scalars().all()
+                
+                for inst in running:
+                    try:
+                        stats = await get_container_stats_via_grpc(str(inst.id))
+                        if stats.get("success"):
+                            cpu = stats.get("cpu_usage_percent", 0)
+                            # If CPU < 1% → candidate for hibernation
+                            if cpu < 1.0:
+                                # Check if instance has been idle (simplistic: immediate hibernate if CPU=0)
+                                print(f"[Hibernation] Instance {inst.name} ({inst.id}) idle (CPU={cpu}%), hibernating...")
+                                await hibernate_worker(str(inst.id))
+                    except Exception as e:
+                        pass  # Skip instances we can't check
+        except Exception as e:
+            print(f"Hibernation monitor error: {e}")
+        
+        await asyncio.sleep(HIBERNATE_IDLE_SECONDS)  # Check every N seconds
+

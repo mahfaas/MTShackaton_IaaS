@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { api } from '../lib/api';
 import CreateInstanceModal from '../components/CreateInstanceModal';
-import { Activity, Server, Cpu, LogOut, Plus, CloudRain, Clock, Trash2, PieChart, TerminalSquare, Send, CheckCircle, XCircle, AlertCircle, Play, Square, Camera } from 'lucide-react';
+import { Activity, Server, Cpu, LogOut, Plus, CloudRain, Clock, Trash2, PieChart, TerminalSquare, Send, CheckCircle, XCircle, AlertCircle, Play, Square, Camera, Moon, Sunrise, Upload } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
 import TerminalModal from '../components/TerminalModal';
@@ -92,6 +92,32 @@ export default function Dashboard() {
         } catch (err) {
             alert("Failed to start instance: " + (err.response?.data?.detail || err.message));
         }
+    };
+
+    const handleWake = async (instanceId) => {
+        try {
+            await api.post(`/instances/${instanceId}/wake`);
+            fetchData();
+        } catch (err) {
+            alert("Failed to wake instance: " + (err.response?.data?.detail || err.message));
+        }
+    };
+
+    const handleImport = async (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+        const formData = new FormData();
+        formData.append('file', file);
+        const name = file.name.replace('.tar', '').replace('.gz', '');
+        try {
+            await api.post(`/instances/import?tenant_id=${user.tenant_id}&name=${encodeURIComponent(name)}&vcpu=1&ram_mb=512`, formData, {
+                headers: { 'Content-Type': 'multipart/form-data' }
+            });
+            fetchData();
+        } catch (err) {
+            alert("Import failed: " + (err.response?.data?.detail || err.message));
+        }
+        e.target.value = '';
     };
 
     const handleStop = async (instanceId) => {
@@ -297,7 +323,7 @@ export default function Dashboard() {
             </div>
 
             {/* Main Content */}
-            <div className="flex-1 p-4 md:p-12 max-w-6xl mx-auto overflow-y-auto w-full">
+            <div className="flex-1 p-4 md:p-12 max-w-[90rem] mx-auto overflow-y-auto w-full">
                 {activeTab === 'compute' ? (
                     <>
                         <div className="flex justify-between items-end mb-10">
@@ -305,13 +331,19 @@ export default function Dashboard() {
                                 <h1 className="text-3xl font-semibold tracking-tight mb-2">Compute Instances</h1>
                                 <p className="text-gray-500">Manage your virtual infrastructure</p>
                             </div>
-                            <button
-                                onClick={() => setIsModalOpen(true)}
-                                className="apple-button flex items-center gap-2"
-                                disabled={quotas?.used_instances >= quotas?.max_instances}
-                            >
-                                <Plus size={18} /> Deploy Instance
-                            </button>
+                            <div className="flex items-center gap-3">
+                                <label className={`apple-button flex items-center gap-2 cursor-pointer bg-white !text-gray-700 border border-gray-200 hover:bg-gray-50 ${quotas?.used_instances >= quotas?.max_instances ? 'opacity-50 pointer-events-none' : ''}`} style={{ background: 'white' }}>
+                                    <Upload size={18} /> Import VM
+                                    <input type="file" accept=".tar,.tar.gz" className="hidden" onChange={handleImport} disabled={quotas?.used_instances >= quotas?.max_instances} />
+                                </label>
+                                <button
+                                    onClick={() => setIsModalOpen(true)}
+                                    className="apple-button flex items-center gap-2"
+                                    disabled={quotas?.used_instances >= quotas?.max_instances}
+                                >
+                                    <Plus size={18} /> Deploy Instance
+                                </button>
+                            </div>
                         </div>
 
                         {/* Quotas / Usage Header */}
@@ -359,64 +391,61 @@ export default function Dashboard() {
                             <table className="w-full text-left text-sm whitespace-nowrap">
                                 <thead className="bg-gray-50/50 text-gray-500 font-medium border-b border-gray-100">
                                     <tr>
-                                        <th className="px-6 py-4">Name</th>
-                                        <th className="px-6 py-4">Status</th>
-                                        <th className="px-6 py-4">Specs</th>
-                                        <th className="px-6 py-4">Tags</th>
-                                        <th className="px-6 py-4">IP Address</th>
-                                        <th className="px-6 py-4">Created</th>
-                                        <th className="px-6 py-4 text-right">Actions</th>
+                                        <th className="px-4 py-3">Name</th>
+                                        <th className="px-4 py-3">Status</th>
+                                        <th className="px-4 py-3">Specs</th>
+                                        <th className="px-4 py-3">Tags</th>
+                                        <th className="px-4 py-3">IP / Access</th>
+                                        <th className="px-4 py-3">Created</th>
+                                        <th className="px-4 py-3 text-right">Actions</th>
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y divide-gray-100">
                                     {instances.map(inst => (
                                         <tr key={inst.id} className="hover:bg-gray-50/50 transition-colors">
-                                            <td className="px-6 py-5 font-medium text-gray-900">{inst.name}</td>
-                                            <td className="px-6 py-5">
-                                                <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium ${inst.status === 'RUNNING' ? 'bg-green-50 text-green-700 border border-green-200/50' :
+                                            <td className="px-4 py-4 font-medium text-gray-900 text-sm">{inst.name}</td>
+                                            <td className="px-4 py-4">
+                                                <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium ${inst.status === 'RUNNING' ? 'bg-green-50 text-green-700 border border-green-200/50' :
                                                     inst.status === 'STOPPED' ? 'bg-gray-100 text-gray-700 border border-gray-200/50' :
-                                                        ['PROVISIONING', 'DELETING'].includes(inst.status) ? 'bg-amber-50 text-amber-700 border border-amber-200/50 animate-pulse' :
-                                                            'bg-red-50 text-red-700 border border-red-200/50'
+                                                        inst.status === 'HIBERNATING' ? 'bg-purple-50 text-purple-700 border border-purple-200/50' :
+                                                            ['PROVISIONING', 'DELETING'].includes(inst.status) ? 'bg-amber-50 text-amber-700 border border-amber-200/50 animate-pulse' :
+                                                                'bg-red-50 text-red-700 border border-red-200/50'
                                                     }`}>
-                                                    <div className={`w-1.5 h-1.5 rounded-full ${inst.status === 'RUNNING' ? 'bg-green-500' : inst.status === 'STOPPED' ? 'bg-gray-400' : ['PROVISIONING', 'DELETING'].includes(inst.status) ? 'bg-amber-500' : 'bg-red-500'}`} />
-                                                    {inst.status}
+                                                    <div className={`w-1.5 h-1.5 rounded-full ${inst.status === 'RUNNING' ? 'bg-green-500' : inst.status === 'STOPPED' ? 'bg-gray-400' : inst.status === 'HIBERNATING' ? 'bg-purple-500' : ['PROVISIONING', 'DELETING'].includes(inst.status) ? 'bg-amber-500' : 'bg-red-500'}`} />
+                                                    {inst.status === 'HIBERNATING' ? '💤 ZZZ' : inst.status}
                                                 </span>
                                             </td>
-                                            <td className="px-6 py-5 text-gray-500">
-                                                {inst.vcpu} vCPU • {inst.ram_mb / 1024} GB • {inst.image}
+                                            <td className="px-4 py-4 text-gray-500 text-xs">
+                                                {inst.vcpu} vCPU • {inst.ram_mb >= 1024 ? (inst.ram_mb / 1024) + ' GB' : inst.ram_mb + ' MB'} • {inst.image}
                                             </td>
-                                            <td className="px-6 py-5">
+                                            <td className="px-4 py-4">
                                                 <div className="flex flex-wrap gap-1">
                                                     {inst.tags ? inst.tags.split(',').map(tag => tag.trim()).filter(Boolean).map(tag => (
-                                                        <span key={tag} className="px-2 py-1 bg-gray-100 text-gray-600 rounded-lg text-xs font-medium border border-gray-200">
+                                                        <span key={tag} className="px-1.5 py-0.5 bg-gray-100 text-gray-600 rounded text-xs border border-gray-200">
                                                             {tag}
                                                         </span>
                                                     )) : <span className="text-gray-400 text-xs italic">—</span>}
                                                 </div>
                                             </td>
-                                            <td className="px-6 py-5 font-mono text-xs">
+                                            <td className="px-4 py-4 font-mono text-xs">
                                                 {inst.ip_address && inst.ip_address.includes('|port:') ? (
-                                                    <>
-                                                        <a
-                                                            href={`http://localhost:${inst.ip_address.split('|port:')[1]}`}
-                                                            target="_blank"
-                                                            rel="noopener noreferrer"
-                                                            className="text-blue-600 hover:text-blue-800 underline font-semibold"
-                                                        >
-                                                            🌐 Open :{inst.ip_address.split('|port:')[1]}
-                                                        </a>
-                                                        <div className="text-gray-400 text-[10px] mt-0.5">{inst.ip_address.split('|')[0]}</div>
-                                                    </>
+                                                    <a
+                                                        href={`http://localhost:${inst.ip_address.split('|port:')[1]}`}
+                                                        target="_blank"
+                                                        rel="noopener noreferrer"
+                                                        className="text-blue-600 hover:text-blue-800 underline font-semibold"
+                                                    >
+                                                        🌐 :{inst.ip_address.split('|port:')[1]}
+                                                    </a>
                                                 ) : (
-                                                    <span className="text-gray-600">{inst.ip_address || '—'}</span>
+                                                    <span className="text-gray-500 text-xs">{inst.ip_address || '—'}</span>
                                                 )}
                                             </td>
-                                            <td className="px-6 py-5 text-gray-500 flex items-center gap-2">
-                                                <Clock size={14} className="text-gray-400" />
+                                            <td className="px-4 py-4 text-gray-500 text-xs">
                                                 {new Date(inst.created_at).toLocaleDateString()}
                                             </td>
-                                            <td className="px-6 py-5 text-right">
-                                                <div className="flex items-center justify-end gap-1">
+                                            <td className="px-4 py-4 text-right">
+                                                <div className="flex items-center justify-end gap-0.5 flex-nowrap">
                                                     {inst.status === 'STOPPED' && (
                                                         <button
                                                             onClick={() => handleStart(inst.id)}
@@ -424,6 +453,15 @@ export default function Dashboard() {
                                                             title="Start Instance"
                                                         >
                                                             <Play size={16} />
+                                                        </button>
+                                                    )}
+                                                    {inst.status === 'HIBERNATING' && (
+                                                        <button
+                                                            onClick={() => handleWake(inst.id)}
+                                                            className="p-2 text-purple-400 hover:text-purple-600 hover:bg-purple-50 rounded-lg transition-colors animate-pulse"
+                                                            title="Wake Up Instance"
+                                                        >
+                                                            <Sunrise size={16} />
                                                         </button>
                                                     )}
                                                     {inst.status === 'RUNNING' && (

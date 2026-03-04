@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { api } from '../lib/api';
-import { X, Camera, RotateCcw, Clock, CheckCircle, Loader2, AlertTriangle, Download } from 'lucide-react';
+import { X, Camera, RotateCcw, Clock, CheckCircle, Loader2, AlertTriangle, Download, Trash2 } from 'lucide-react';
 
 export default function BackupManager({ isOpen, onClose, instance, onRestored }) {
     const [backups, setBackups] = useState([]);
@@ -53,20 +53,32 @@ export default function BackupManager({ isOpen, onClose, instance, onRestored })
         }
     };
 
-    const handleExport = (backupId) => {
-        const token = localStorage.getItem('token');
-        const url = `http://localhost:8000/api/v1/instances/${instance.id}/snapshots/${backupId}/export`;
-        // Download via hidden link with auth header workaround
-        fetch(url, { headers: { Authorization: `Bearer ${token}` } })
-            .then(res => res.blob())
-            .then(blob => {
-                const a = document.createElement('a');
-                a.href = URL.createObjectURL(blob);
-                a.download = `snapshot-${backupId}.tar`;
-                a.click();
-                URL.revokeObjectURL(a.href);
-            })
-            .catch(e => console.error('Export failed', e));
+    const handleExport = async (backupId) => {
+        try {
+            const res = await api.get(
+                `/instances/${instance.id}/snapshots/${backupId}/export`,
+                { responseType: 'blob' }
+            );
+            const a = document.createElement('a');
+            a.href = URL.createObjectURL(res.data);
+            a.download = `snapshot-${backupId}.tar`;
+            a.click();
+            URL.revokeObjectURL(a.href);
+        } catch (e) {
+            console.error('Export failed', e);
+            alert('Export failed: ' + (e.response?.data?.detail || e.message));
+        }
+    };
+
+    const handleDelete = async (backupId) => {
+        if (!confirm('Delete this snapshot permanently?')) return;
+        try {
+            await api.delete(`/instances/${instance.id}/snapshots/${backupId}`);
+            await fetchBackups();
+        } catch (e) {
+            console.error('Delete failed', e);
+            alert('Delete failed: ' + (e.response?.data?.detail || e.message));
+        }
     };
 
     if (!isOpen) return null;
@@ -144,7 +156,7 @@ export default function BackupManager({ isOpen, onClose, instance, onRestored })
                                                 <>
                                                     <button
                                                         onClick={() => handleExport(b.id)}
-                                                        className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors border border-emerald-200"
+                                                        className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors border border-emerald-200"
                                                         title="Download snapshot as .tar"
                                                     >
                                                         <Download size={12} /> Export
@@ -152,7 +164,7 @@ export default function BackupManager({ isOpen, onClose, instance, onRestored })
                                                     <button
                                                         onClick={() => handleRestore(b.id)}
                                                         disabled={restoringId === b.id}
-                                                        className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-blue-600 hover:bg-blue-50 rounded-lg transition-colors border border-blue-200 disabled:opacity-50"
+                                                        className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium text-blue-600 hover:bg-blue-50 rounded-lg transition-colors border border-blue-200 disabled:opacity-50"
                                                     >
                                                         {restoringId === b.id ? (
                                                             <Loader2 size={12} className="animate-spin" />
@@ -160,6 +172,13 @@ export default function BackupManager({ isOpen, onClose, instance, onRestored })
                                                             <RotateCcw size={12} />
                                                         )}
                                                         Restore
+                                                    </button>
+                                                    <button
+                                                        onClick={() => handleDelete(b.id)}
+                                                        className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium text-red-500 hover:bg-red-50 rounded-lg transition-colors border border-red-200"
+                                                        title="Delete snapshot"
+                                                    >
+                                                        <Trash2 size={12} />
                                                     </button>
                                                 </>
                                             )}

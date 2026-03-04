@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, BackgroundTasks, HTTPException
+from fastapi import APIRouter, Depends, BackgroundTasks, HTTPException, File, UploadFile
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 
@@ -113,6 +113,114 @@ async def get_quotas(
         
     return usage
 
+@router.post("/import", status_code=201)
+async def import_instance(
+    tenant_id: str,
+    name: str,
+    vcpu: int = 1,
+    ram_mb: int = 512,
+    file: UploadFile = File(...),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+    background_tasks: BackgroundTasks = None
+):
+    """Import a VM from a .tar Docker image file."""
+    from app.models.base import InstanceStatus, Role
+    import subprocess, os, uuid
+    
+    member_query = select(TenantMember).where(
+        TenantMember.user_id == current_user.id,
+        TenantMember.tenant_id == tenant_id
+    )
+    member = (await db.execute(member_query)).scalars().first()
+    if not member:
+        raise HTTPException(status_code=403, detail="Not authorized for this tenant")
+    
+    # Save uploaded file to temp
+    content = await file.read()
+    tmp_path = f"/tmp/import-{uuid.uuid4().hex[:8]}.tar"
+    with open(tmp_path, "wb") as f:
+        f.write(content)
+    
+    # Docker load via subprocess
+    result = subprocess.run(
+        ["docker", "load", "-i", tmp_path],
+        capture_output=True, text=True, timeout=120
+    )
+    os.remove(tmp_path)
+    
+    if result.returncode != 0:
+        raise HTTPException(status_code=400, detail=f"Docker load failed: {result.stderr}")
+    
+    # Parse image name from output
+    loaded_image = ""
+    output = result.stdout + result.stderr
+    for line in output.strip().split("\n"):
+        if "Loaded image:" in line:
+            loaded_image = line.split("Loaded image:")[1].strip()
+            break
+        elif "Loaded image ID:" in line:
+            loaded_image = line.split("Loaded image ID:")[1].strip()
+            break
+    
+    if not loaded_image:
+        raise HTTPException(status_code=400, detail="Could not determine loaded image name")
+    
+    # Detect original base image from snapshot name for clean display
+    # snapshot names look like: snapshot-{uuid}-{timestamp}
+    # Try to inspect the image to find the original base
+    display_image = loaded_image
+    known_bases = ["nginx", "ubuntu", "alpine", "debian"]
+    for base in known_bases:
+        if base in loaded_image.lower():
+            display_image = f"{base}:imported"
+            break
+    else:
+        display_image = "custom:imported"
+    
+    # Generate clean name
+    short_id = uuid.uuid4().hex[:4]
+    clean_name = f"imported-vm-{short_id}"
+    
+    # Create instance record
+    from app.services.instance import create_instance_service, provision_worker
+    
+    username = current_user.email.split('@')[0]
+    service_result = await create_instance_service(
+        db=db,
+        tenant_id=str(tenant_id),
+        created_by_id=str(current_user.id),
+        name=clean_name,
+        vcpu=vcpu,
+        ram_mb=ram_mb,
+        image=display_image,
+        tags=f"{username}/imported"
+    )
+    
+    if not service_result["success"]:
+        raise HTTPException(status_code=service_result["status_code"], detail=service_result["error"])
+    
+    instance = service_result["instance"]
+    
+    # Provision from the loaded image (use actual loaded image name)
+    if background_tasks:
+        background_tasks.add_task(
+            provision_worker,
+            instance_id=str(instance.id),
+            tenant_id=str(tenant_id),
+            vcpu=vcpu,
+            ram_mb=ram_mb,
+            image=loaded_image
+        )
+    
+    return {
+        "id": instance.id,
+        "name": instance.name,
+        "image": display_image,
+        "status": instance.status.value,
+        "message": f"VM imported from {file.filename}"
+    }
+
 @router.delete("/{instance_id}", status_code=202)
 async def delete_instance(
     instance_id: str,
@@ -219,6 +327,31 @@ async def start_instance(
          
     background_tasks.add_task(start_worker, instance_id=str(instance.id))
     return {"message": "Instance start queued"}
+
+@router.post("/{instance_id}/wake", status_code=200)
+async def wake_instance(
+    instance_id: str,
+    background_tasks: BackgroundTasks,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    from app.models.base import InstanceStatus, Role
+    from app.services.instance import wake_worker
+    
+    member_query = select(TenantMember).where(TenantMember.user_id == current_user.id)
+    member = (await db.execute(member_query)).scalars().first()
+    
+    query = select(Instance).where(Instance.id == instance_id)
+    if member and current_user.role != Role.ADMIN:
+        query = query.where(Instance.tenant_id == member.tenant_id)
+    instance = (await db.execute(query)).scalar_one_or_none()
+    if not instance:
+        raise HTTPException(status_code=404, detail="Instance not found")
+    if instance.status != InstanceStatus.HIBERNATING:
+        raise HTTPException(status_code=400, detail="Instance is not hibernating")
+    
+    background_tasks.add_task(wake_worker, instance_id=str(instance.id))
+    return {"message": "Instance waking up"}
 
 # ==========================================
 #  TENANT ACCESS REQUESTS (User-facing)
@@ -416,11 +549,10 @@ async def export_snapshot(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    """Export a snapshot as a downloadable tar stream."""
+    """Export a snapshot as a downloadable tar file."""
     from app.models.base import Role, Backup, BackupStatus
     from fastapi.responses import StreamingResponse
-    import socket as sock
-    import json as export_json
+    import subprocess
     
     member_query = select(TenantMember).where(TenantMember.user_id == current_user.id)
     member = (await db.execute(member_query)).scalars().first()
@@ -438,40 +570,61 @@ async def export_snapshot(
     
     image_name = backup.snapshot_image
     
-    def docker_image_stream():
-        """Stream docker image as tar via Docker API unix socket."""
-        s = sock.socket(sock.AF_UNIX, sock.SOCK_STREAM)
-        s.settimeout(120)
-        s.connect("/var/run/docker.sock")
-        request = f"GET /images/{image_name}/get HTTP/1.1\r\nHost: localhost\r\n\r\n".encode()
-        s.sendall(request)
-        # Read HTTP headers
-        header_data = b""
-        while b"\r\n\r\n" not in header_data:
-            chunk = s.recv(4096)
+    def docker_save_stream():
+        """Stream docker image via 'docker save' subprocess."""
+        proc = subprocess.Popen(
+            ["docker", "save", image_name],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE
+        )
+        while True:
+            chunk = proc.stdout.read(65536)
             if not chunk:
                 break
-            header_data += chunk
-        # After headers, stream the body
-        if b"\r\n\r\n" in header_data:
-            _, body_start = header_data.split(b"\r\n\r\n", 1)
-            if body_start:
-                yield body_start
-        while True:
-            try:
-                chunk = s.recv(65536)
-                if not chunk:
-                    break
-                yield chunk
-            except sock.timeout:
-                break
-        s.close()
+            yield chunk
+        proc.wait()
     
     return StreamingResponse(
-        docker_image_stream(),
+        docker_save_stream(),
         media_type="application/x-tar",
         headers={"Content-Disposition": f"attachment; filename={image_name}.tar"}
     )
+
+@router.delete("/{instance_id}/snapshots/{backup_id}")
+async def delete_snapshot(
+    instance_id: str,
+    backup_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Delete a snapshot and its Docker image."""
+    from app.models.base import Role, Backup, BackupStatus
+    import subprocess
+    
+    member_query = select(TenantMember).where(TenantMember.user_id == current_user.id)
+    member = (await db.execute(member_query)).scalars().first()
+    
+    query = select(Instance).where(Instance.id == instance_id)
+    if member and current_user.role != Role.ADMIN:
+        query = query.where(Instance.tenant_id == member.tenant_id)
+    instance = (await db.execute(query)).scalar_one_or_none()
+    if not instance:
+        raise HTTPException(status_code=404, detail="Instance not found")
+    
+    backup = (await db.execute(select(Backup).where(Backup.id == backup_id, Backup.instance_id == instance_id))).scalar_one_or_none()
+    if not backup:
+        raise HTTPException(status_code=404, detail="Backup not found")
+    
+    # Try to remove docker image
+    if backup.snapshot_image:
+        try:
+            subprocess.run(["docker", "rmi", "-f", backup.snapshot_image], capture_output=True, timeout=30)
+        except:
+            pass
+    
+    await db.delete(backup)
+    await db.commit()
+    return {"message": "Snapshot deleted"}
 
 from pydantic import BaseModel as PydanticBase
 

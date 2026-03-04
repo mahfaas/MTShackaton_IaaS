@@ -10,15 +10,15 @@ class InstanceBase(BaseModel):
     image: str = "ubuntu:22.04"
     tags: Optional[str] = ""
 
+class InstanceCreateRequest(InstanceBase):
+    tenant_id: UUID
+
     @validator("image")
     def validate_image(cls, v):
         allowed_images = ["ubuntu:22.04", "alpine:3.18", "debian:12", "ubuntu:latest", "alpine:latest", "nginx:latest", "nginx:alpine"]
         if v not in allowed_images:
             raise ValueError(f"Image {v} not allowed. Please use one of {allowed_images}")
         return v
-
-class InstanceCreateRequest(InstanceBase):
-    tenant_id: UUID
 
 class InstanceResponse(InstanceBase):
     id: UUID
