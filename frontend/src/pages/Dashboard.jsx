@@ -1,30 +1,46 @@
 import { useState, useEffect } from 'react';
 import { api } from '../lib/api';
 import CreateInstanceModal from '../components/CreateInstanceModal';
-import { Activity, Server, Cpu, LogOut, Plus, CloudRain, Clock, Trash2, PieChart, Menu, TerminalSquare } from 'lucide-react';
+import { Activity, Server, Cpu, LogOut, Plus, CloudRain, Clock, Trash2, PieChart, TerminalSquare, Send, CheckCircle, XCircle, AlertCircle } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
 import TerminalModal from '../components/TerminalModal';
 
 export default function Dashboard() {
-    const { user, logout } = useAuth();
+    const { user, logout, setUser } = useAuth();
     const navigate = useNavigate();
     const [instances, setInstances] = useState([]);
     const [quotas, setQuotas] = useState(null);
     const [loading, setLoading] = useState(true);
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [activeTab, setActiveTab] = useState('compute');
-    const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
     const [terminalInstance, setTerminalInstance] = useState(null);
+
+    // Request state
+    const [requestMessage, setRequestMessage] = useState('');
+    const [requestLoading, setRequestLoading] = useState(false);
+    const [requestStatus, setRequestStatus] = useState(null); // null, 'PENDING', 'APPROVED', 'REJECTED'
+    const [requestInfo, setRequestInfo] = useState(null);
+
+    const hasTenant = !!user?.tenant_id;
 
     const fetchData = async () => {
         try {
-            const [instancesRes, quotasRes] = await Promise.all([
-                api.get('/instances').catch(() => ({ data: [] })),
-                api.get('/instances/quotas').catch(() => ({ data: null }))
-            ]);
-            setInstances(instancesRes.data || []);
-            setQuotas(quotasRes.data);
+            if (hasTenant) {
+                const [instancesRes, quotasRes] = await Promise.all([
+                    api.get('/instances').catch(() => ({ data: [] })),
+                    api.get('/instances/quotas').catch(() => ({ data: null }))
+                ]);
+                setInstances(instancesRes.data || []);
+                setQuotas(quotasRes.data);
+            } else {
+                // Check request status
+                try {
+                    const res = await api.get('/instances/my-request');
+                    setRequestStatus(res.data.status);
+                    setRequestInfo(res.data);
+                } catch { }
+            }
         } catch (err) {
             console.error("Failed to load dashboard data:", err);
         } finally {
@@ -32,18 +48,31 @@ export default function Dashboard() {
         }
     };
 
+    // Re-check user data periodically if no tenant (in case admin assigns)
+    const refreshUser = async () => {
+        if (!hasTenant) {
+            try {
+                const res = await api.get('/auth/me');
+                if (res.data.tenant_id) {
+                    setUser(res.data);
+                }
+            } catch { }
+        }
+    };
+
     useEffect(() => {
         fetchData();
-        // Poll every 5 seconds for status updates
-        const interval = setInterval(fetchData, 5000);
+        const interval = setInterval(() => {
+            fetchData();
+            refreshUser();
+        }, 5000);
         return () => clearInterval(interval);
-    }, []);
+    }, [hasTenant]);
 
     const handleDelete = async (instanceId) => {
         if (!window.confirm("Are you sure you want to delete this instance?")) return;
         try {
             await api.delete(`/instances/${instanceId}`);
-            // Optimistic update to DELETING
             setInstances(prev => prev.map(inst =>
                 inst.id === instanceId ? { ...inst, status: 'DELETING' } : inst
             ));
@@ -57,12 +86,126 @@ export default function Dashboard() {
         navigate('/login');
     };
 
+    const handleSendRequest = async () => {
+        setRequestLoading(true);
+        try {
+            await api.post('/instances/request-access', { message: requestMessage });
+            setRequestStatus('PENDING');
+            setRequestMessage('');
+            // Refresh user data
+            const meRes = await api.get('/auth/me');
+            setUser(meRes.data);
+        } catch (err) {
+            alert(err.response?.data?.detail || 'Failed to send request');
+        } finally {
+            setRequestLoading(false);
+        }
+    };
+
     if (loading && !quotas && !instances.length) return (
         <div className="min-h-screen flex items-center justify-center bg-gray-50">
             <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-black"></div>
         </div>
     );
 
+    // ==========================================
+    //  NO TENANT STATE — Request access screen
+    // ==========================================
+    if (!hasTenant) {
+        return (
+            <div className="min-h-screen flex items-center justify-center bg-gray-50/50 p-4">
+                <div className="apple-card w-full max-w-lg p-8 text-center">
+                    <div className="w-16 h-16 bg-amber-50 text-amber-600 rounded-2xl flex items-center justify-center mx-auto mb-6">
+                        <AlertCircle size={32} />
+                    </div>
+                    <h1 className="text-2xl font-semibold tracking-tight mb-3">No Tenant Assigned</h1>
+                    <p className="text-gray-500 mb-8 leading-relaxed">
+                        Your account has been created but you haven't been assigned to a tenant yet.
+                        Send a request to the administrator to get access to cloud resources.
+                    </p>
+
+                    {requestStatus === 'PENDING' || user?.has_pending_request ? (
+                        <div className="bg-blue-50 border border-blue-100 rounded-2xl p-5 text-left">
+                            <div className="flex items-center gap-3 mb-2">
+                                <div className="w-8 h-8 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center">
+                                    <Clock size={16} />
+                                </div>
+                                <div>
+                                    <div className="font-semibold text-blue-900 text-sm">Request Pending</div>
+                                    <div className="text-blue-600 text-xs">Waiting for administrator approval</div>
+                                </div>
+                            </div>
+                            {requestInfo?.message && (
+                                <div className="mt-3 text-sm text-blue-700 bg-blue-100/50 rounded-xl p-3">
+                                    "{requestInfo.message}"
+                                </div>
+                            )}
+                        </div>
+                    ) : requestStatus === 'REJECTED' ? (
+                        <div className="space-y-4">
+                            <div className="bg-red-50 border border-red-100 rounded-2xl p-5 text-left">
+                                <div className="flex items-center gap-3 mb-2">
+                                    <div className="w-8 h-8 bg-red-100 text-red-600 rounded-full flex items-center justify-center">
+                                        <XCircle size={16} />
+                                    </div>
+                                    <div>
+                                        <div className="font-semibold text-red-900 text-sm">Request Rejected</div>
+                                        {requestInfo?.admin_comment && (
+                                            <div className="text-red-600 text-xs mt-1">"{requestInfo.admin_comment}"</div>
+                                        )}
+                                    </div>
+                                </div>
+                            </div>
+                            <div className="space-y-3">
+                                <textarea
+                                    value={requestMessage}
+                                    onChange={(e) => setRequestMessage(e.target.value)}
+                                    placeholder="Describe why you need access..."
+                                    className="apple-input w-full h-24 resize-none"
+                                />
+                                <button
+                                    onClick={handleSendRequest}
+                                    disabled={requestLoading}
+                                    className="apple-button w-full py-3 flex items-center justify-center gap-2"
+                                >
+                                    <Send size={16} />
+                                    {requestLoading ? 'Sending...' : 'Send New Request'}
+                                </button>
+                            </div>
+                        </div>
+                    ) : (
+                        <div className="space-y-3">
+                            <textarea
+                                value={requestMessage}
+                                onChange={(e) => setRequestMessage(e.target.value)}
+                                placeholder="Describe why you need access to cloud resources..."
+                                className="apple-input w-full h-24 resize-none"
+                            />
+                            <button
+                                onClick={handleSendRequest}
+                                disabled={requestLoading}
+                                className="apple-button w-full py-3 flex items-center justify-center gap-2"
+                            >
+                                <Send size={16} />
+                                {requestLoading ? 'Sending...' : 'Request Access'}
+                            </button>
+                        </div>
+                    )}
+
+                    <div className="mt-6 pt-6 border-t border-gray-100">
+                        <div className="text-xs text-gray-400 mb-3">Logged in as {user?.email}</div>
+                        <button onClick={handleLogout} className="text-sm text-gray-500 hover:text-red-600 transition-colors flex items-center gap-2 mx-auto">
+                            <LogOut size={14} /> Sign Out
+                        </button>
+                    </div>
+                </div>
+            </div>
+        );
+    }
+
+    // ==========================================
+    //  NORMAL DASHBOARD (with tenant)
+    // ==========================================
     return (
         <div className="min-h-screen flex flex-col md:flex-row bg-gray-50/50">
             {/* Mobile Header */}
@@ -94,7 +237,7 @@ export default function Dashboard() {
 
             {/* Desktop Sidebar */}
             <div className="w-64 bg-white border-r border-gray-100 p-6 flex-col hidden md:flex sticky top-0 h-screen">
-                <div className="flex items-center gap-3 font-semibold text-lg mb-10">
+                <div className="flex items-center gap-3 font-semibold text-lg mb-2">
                     <div className="bg-black text-white p-2 rounded-xl">
                         <CloudRain size={20} />
                     </div>
@@ -103,6 +246,13 @@ export default function Dashboard() {
                         <span className="text-xs font-normal text-gray-400">{user?.email}</span>
                     </div>
                 </div>
+                {user?.tenant_name && (
+                    <div className="mb-8 ml-1">
+                        <span className="text-[11px] font-medium text-gray-400 bg-gray-100 px-2 py-1 rounded-lg">
+                            {user.tenant_name}
+                        </span>
+                    </div>
+                )}
 
                 <nav className="flex-1 space-y-2 text-sm font-medium">
                     <button

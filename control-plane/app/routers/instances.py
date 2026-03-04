@@ -139,3 +139,72 @@ async def delete_instance(
         tenant_id=str(instance.tenant_id)
     )
     return {"message": "Instance deletion queued"}
+
+# ==========================================
+#  TENANT ACCESS REQUESTS (User-facing)
+# ==========================================
+
+from pydantic import BaseModel as PydanticBase
+
+class AccessRequestCreate(PydanticBase):
+    message: str = ""
+
+@router.post("/request-access", status_code=201)
+async def request_tenant_access(
+    req: AccessRequestCreate,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    from app.models.base import TenantRequest, RequestStatus
+    
+    # Check if user already has a tenant
+    member = (await db.execute(
+        select(TenantMember).where(TenantMember.user_id == current_user.id)
+    )).scalar_one_or_none()
+    if member:
+        raise HTTPException(status_code=400, detail="You are already assigned to a tenant")
+    
+    # Check if there's already a pending request
+    existing = (await db.execute(
+        select(TenantRequest).where(
+            TenantRequest.user_id == current_user.id,
+            TenantRequest.status == RequestStatus.PENDING
+        )
+    )).scalar_one_or_none()
+    if existing:
+        raise HTTPException(status_code=400, detail="You already have a pending request")
+    
+    request = TenantRequest(
+        user_id=current_user.id,
+        message=req.message
+    )
+    db.add(request)
+    await db.commit()
+    
+    return {"message": "Access request submitted successfully"}
+
+@router.get("/my-request")
+async def get_my_request(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    from app.models.base import TenantRequest, RequestStatus
+    
+    # Get latest request
+    query = select(TenantRequest).where(
+        TenantRequest.user_id == current_user.id
+    ).order_by(TenantRequest.created_at.desc())
+    result = await db.execute(query)
+    req = result.scalars().first()
+    
+    if not req:
+        return {"status": None}
+    
+    return {
+        "id": req.id,
+        "status": req.status.value,
+        "message": req.message,
+        "admin_comment": req.admin_comment,
+        "created_at": req.created_at,
+        "resolved_at": req.resolved_at
+    }

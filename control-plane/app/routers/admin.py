@@ -2,35 +2,66 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from sqlalchemy.orm import selectinload
+from datetime import datetime
 
 from app.database import get_db
-from app.models.base import User, Role, Tenant, Instance, Quota
+from app.models.base import User, Role, Tenant, Instance, Quota, TenantMember, TenantRequest, RequestStatus
 from app.routers.deps import get_current_user
 from pydantic import BaseModel
+from typing import Optional
+from uuid import UUID
+
+# --- Pydantic Schemas ---
 
 class QuotaUpdate(BaseModel):
     max_vcpu: int
     max_ram_mb: int
     max_instances: int
 
+class TenantCreateRequest(BaseModel):
+    name: str
+    max_vcpu: int = 4
+    max_ram_mb: int = 8192
+    max_instances: int = 2
+
+class AssignUserRequest(BaseModel):
+    user_id: UUID
+
+class RequestAction(BaseModel):
+    action: str  # "approve" or "reject"
+    tenant_id: Optional[UUID] = None  # required for approve
+    comment: str = ""
+
+# --- Helpers ---
+
+def require_admin(user: User):
+    if user.role != Role.ADMIN:
+        raise HTTPException(status_code=403, detail="Admin privileges required")
+
 router = APIRouter(prefix="/admin", tags=["admin"])
+
+# ==========================================
+#  TENANTS
+# ==========================================
 
 @router.get("/tenants")
 async def list_tenants(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    if current_user.role != Role.ADMIN:
-        raise HTTPException(status_code=403, detail="Admin privileges required")
+    require_admin(current_user)
         
-    # Fetch all tenants with their instances and quotas
-    query = select(Tenant).options(selectinload(Tenant.instances), selectinload(Tenant.quota))
+    query = select(Tenant).options(
+        selectinload(Tenant.instances),
+        selectinload(Tenant.quota),
+        selectinload(Tenant.members).selectinload(TenantMember.user)
+    )
     result = await db.execute(query)
     tenants = result.scalars().all()
     
     response = []
     for t in tenants:
-        active_instances = [i for i in t.instances if i.status.value != "FAILED" and i.status.value != "DELETED"]
+        active_instances = [i for i in t.instances if i.status.value not in ("FAILED", "DELETED")]
         used_vcpu = sum(i.vcpu for i in active_instances)
         used_ram = sum(i.ram_mb for i in active_instances)
         
@@ -38,11 +69,20 @@ async def list_tenants(
             "id": t.id,
             "name": t.name,
             "instances_count": len(active_instances),
+            "members": [
+                {
+                    "user_id": m.user.id,
+                    "email": m.user.email,
+                    "is_owner": m.is_owner
+                } for m in t.members
+            ],
             "quota_usage": {
                 "max_vcpu": t.quota.max_vcpu if t.quota else 0,
                 "used_vcpu": used_vcpu,
                 "max_ram_mb": t.quota.max_ram_mb if t.quota else 0,
                 "used_ram": used_ram,
+                "max_instances": t.quota.max_instances if t.quota else 0,
+                "used_instances": len(active_instances),
             },
             "instances": [
                 {
@@ -58,6 +98,38 @@ async def list_tenants(
         
     return response
 
+@router.post("/tenants")
+async def create_tenant(
+    req: TenantCreateRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    require_admin(current_user)
+    
+    # Check unique name
+    existing = await db.execute(select(Tenant).where(Tenant.name == req.name))
+    if existing.scalar_one_or_none():
+        raise HTTPException(status_code=400, detail="Tenant with this name already exists")
+    
+    tenant = Tenant(name=req.name)
+    db.add(tenant)
+    await db.flush()
+    
+    quota = Quota(
+        tenant_id=tenant.id,
+        max_vcpu=req.max_vcpu,
+        max_ram_mb=req.max_ram_mb,
+        max_instances=req.max_instances
+    )
+    db.add(quota)
+    await db.commit()
+    
+    return {
+        "id": tenant.id,
+        "name": tenant.name,
+        "message": "Tenant created successfully"
+    }
+
 @router.put("/tenants/{tenant_id}/quotas")
 async def update_tenant_quotas(
     tenant_id: str,
@@ -65,15 +137,13 @@ async def update_tenant_quotas(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    if current_user.role != Role.ADMIN:
-        raise HTTPException(status_code=403, detail="Admin privileges required")
+    require_admin(current_user)
         
     query = select(Quota).where(Quota.tenant_id == tenant_id)
     result = await db.execute(query)
     quota = result.scalar_one_or_none()
     
     if not quota:
-        # Create a new quota row if it doesn't exist
         quota = Quota(
             tenant_id=tenant_id,
             max_vcpu=quota_update.max_vcpu,
@@ -82,7 +152,6 @@ async def update_tenant_quotas(
         )
         db.add(quota)
     else:
-        # Update existing
         quota.max_vcpu = quota_update.max_vcpu
         quota.max_ram_mb = quota_update.max_ram_mb
         quota.max_instances = quota_update.max_instances
@@ -96,10 +165,7 @@ async def delete_tenant(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    if current_user.role != Role.ADMIN:
-        raise HTTPException(status_code=403, detail="Admin privileges required")
-    
-    from app.models.base import TenantMember, Instance
+    require_admin(current_user)
     
     # Delete all instances for this tenant
     instances_query = select(Instance).where(Instance.tenant_id == tenant_id)
@@ -120,6 +186,12 @@ async def delete_tenant(
     for member in members_result.scalars().all():
         await db.delete(member)
     
+    # Delete related requests
+    req_query = select(TenantRequest).where(TenantRequest.tenant_id == tenant_id)
+    req_result = await db.execute(req_query)
+    for r in req_result.scalars().all():
+        await db.delete(r)
+    
     # Delete tenant
     tenant_query = select(Tenant).where(Tenant.id == tenant_id)
     tenant_result = await db.execute(tenant_query)
@@ -131,3 +203,199 @@ async def delete_tenant(
     await db.commit()
     
     return {"message": f"Tenant '{tenant.name}' deleted successfully"}
+
+# ==========================================
+#  TENANT MEMBERS
+# ==========================================
+
+@router.post("/tenants/{tenant_id}/members")
+async def add_member_to_tenant(
+    tenant_id: str,
+    req: AssignUserRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    require_admin(current_user)
+    
+    # Check tenant exists
+    tenant = (await db.execute(select(Tenant).where(Tenant.id == tenant_id))).scalar_one_or_none()
+    if not tenant:
+        raise HTTPException(status_code=404, detail="Tenant not found")
+    
+    # Check user exists
+    user = (await db.execute(select(User).where(User.id == req.user_id))).scalar_one_or_none()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    # Remove user from any existing tenant first
+    old_members = (await db.execute(
+        select(TenantMember).where(TenantMember.user_id == req.user_id)
+    )).scalars().all()
+    for m in old_members:
+        await db.delete(m)
+    
+    # Add to new tenant
+    member = TenantMember(user_id=req.user_id, tenant_id=tenant_id, is_owner=False)
+    db.add(member)
+    await db.commit()
+    
+    return {"message": f"User {user.email} assigned to tenant {tenant.name}"}
+
+@router.delete("/tenants/{tenant_id}/members/{user_id}")
+async def remove_member_from_tenant(
+    tenant_id: str,
+    user_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    require_admin(current_user)
+    
+    member = (await db.execute(
+        select(TenantMember).where(
+            TenantMember.user_id == user_id,
+            TenantMember.tenant_id == tenant_id
+        )
+    )).scalar_one_or_none()
+    
+    if not member:
+        raise HTTPException(status_code=404, detail="Member not found")
+    
+    await db.delete(member)
+    await db.commit()
+    return {"message": "Member removed from tenant"}
+
+# ==========================================
+#  USERS
+# ==========================================
+
+@router.get("/users")
+async def list_users(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    require_admin(current_user)
+    
+    query = select(User).options()
+    result = await db.execute(query)
+    users = result.scalars().all()
+    
+    response = []
+    for u in users:
+        # Find tenant membership
+        member_query = select(TenantMember).where(TenantMember.user_id == u.id)
+        member_result = await db.execute(member_query)
+        member = member_result.scalar_one_or_none()
+        
+        tenant_name = None
+        tenant_id = None
+        if member:
+            tenant = (await db.execute(select(Tenant).where(Tenant.id == member.tenant_id))).scalar_one_or_none()
+            if tenant:
+                tenant_name = tenant.name
+                tenant_id = tenant.id
+        
+        response.append({
+            "id": u.id,
+            "email": u.email,
+            "role": u.role.value,
+            "tenant_id": tenant_id,
+            "tenant_name": tenant_name,
+            "created_at": u.created_at
+        })
+    
+    return response
+
+# ==========================================
+#  TENANT ACCESS REQUESTS
+# ==========================================
+
+@router.get("/requests")
+async def list_requests(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    require_admin(current_user)
+    
+    query = select(TenantRequest).order_by(TenantRequest.created_at.desc())
+    result = await db.execute(query)
+    requests = result.scalars().all()
+    
+    response = []
+    for r in requests:
+        # Get user info
+        user = (await db.execute(select(User).where(User.id == r.user_id))).scalar_one_or_none()
+        tenant_name = None
+        if r.tenant_id:
+            tenant = (await db.execute(select(Tenant).where(Tenant.id == r.tenant_id))).scalar_one_or_none()
+            if tenant:
+                tenant_name = tenant.name
+        
+        response.append({
+            "id": r.id,
+            "user_id": r.user_id,
+            "user_email": user.email if user else "Unknown",
+            "tenant_id": r.tenant_id,
+            "tenant_name": tenant_name,
+            "message": r.message,
+            "status": r.status.value,
+            "admin_comment": r.admin_comment,
+            "created_at": r.created_at,
+            "resolved_at": r.resolved_at
+        })
+    
+    return response
+
+@router.post("/requests/{request_id}/resolve")
+async def resolve_request(
+    request_id: str,
+    action: RequestAction,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    require_admin(current_user)
+    
+    req = (await db.execute(select(TenantRequest).where(TenantRequest.id == request_id))).scalar_one_or_none()
+    if not req:
+        raise HTTPException(status_code=404, detail="Request not found")
+    
+    if req.status != RequestStatus.PENDING:
+        raise HTTPException(status_code=400, detail="Request already resolved")
+    
+    if action.action == "approve":
+        tenant_id = action.tenant_id or req.tenant_id
+        if not tenant_id:
+            raise HTTPException(status_code=400, detail="tenant_id is required for approval")
+        
+        # Check tenant exists
+        tenant = (await db.execute(select(Tenant).where(Tenant.id == tenant_id))).scalar_one_or_none()
+        if not tenant:
+            raise HTTPException(status_code=404, detail="Tenant not found")
+        
+        # Remove from old tenants
+        old_members = (await db.execute(
+            select(TenantMember).where(TenantMember.user_id == req.user_id)
+        )).scalars().all()
+        for m in old_members:
+            await db.delete(m)
+        
+        # Add to tenant
+        member = TenantMember(user_id=req.user_id, tenant_id=tenant_id, is_owner=False)
+        db.add(member)
+        
+        req.status = RequestStatus.APPROVED
+        req.tenant_id = tenant_id
+        req.admin_comment = action.comment
+        req.resolved_at = datetime.utcnow()
+        
+        await db.commit()
+        return {"message": f"Request approved. User assigned to tenant '{tenant.name}'."}
+    
+    elif action.action == "reject":
+        req.status = RequestStatus.REJECTED
+        req.admin_comment = action.comment
+        req.resolved_at = datetime.utcnow()
+        await db.commit()
+        return {"message": "Request rejected."}
+    
+    else:
+        raise HTTPException(status_code=400, detail="Invalid action. Use 'approve' or 'reject'.")

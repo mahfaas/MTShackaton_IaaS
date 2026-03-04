@@ -5,7 +5,7 @@ from sqlalchemy.future import select
 from pydantic import BaseModel
 
 from app.database import get_db
-from app.models.base import User, Tenant, TenantMember, Quota
+from app.models.base import User, Tenant, TenantMember, Quota, TenantRequest, RequestStatus
 from app.core.security import verify_password, create_access_token, get_password_hash
 from app.schemas.user import Token
 from app.routers.deps import get_current_user
@@ -28,7 +28,6 @@ async def login(form_data: OAuth2PasswordRequestForm = Depends(), db: AsyncSessi
     access_token = create_access_token(data={"sub": str(user.id)})
     return {"access_token": access_token, "token_type": "bearer"}
 
-# Вспомогательный эндпоинт для регистрации 
 class RegisterData(BaseModel):
     email: str
     password: str
@@ -40,57 +39,42 @@ async def register(data: RegisterData, db: AsyncSession = Depends(get_db)):
     if result.scalar_one_or_none():
         raise HTTPException(status_code=400, detail="Email already registered")
     
+    # Just create the user — no auto-tenant creation
     new_user = User(email=data.email, hashed_password=get_password_hash(data.password))
     db.add(new_user)
-    
-    # Auto-provision Tenant and Quota to fix the "NaN/NaN" issue on the frontend
-    tenant_name = data.email.split('@')[0] + "-tenant"
-    new_tenant = Tenant(name=tenant_name)
-    db.add(new_tenant)
-    await db.flush() # flush to get new_tenant.id without committing
-    
-    tenant_member = TenantMember(user_id=new_user.id, tenant_id=new_tenant.id, is_owner=True)
-    db.add(tenant_member)
-    
-    default_quota = Quota(tenant_id=new_tenant.id, max_vcpu=4, max_ram_mb=8192, max_instances=2)
-    db.add(default_quota)
-
     await db.commit()
     await db.refresh(new_user)
     return {"message": "User created successfully", "id": new_user.id}
 
 @router.get("/me")
 async def get_me(current_user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
-    from app.models.base import TenantMember
-    # Fetch user's first tenant for the hackathon (simplification)
+    # Find user's tenant membership (if any)
     query = select(TenantMember).where(TenantMember.user_id == current_user.id)
     res = await db.execute(query)
     member = res.scalars().first()
     
-    # Auto-provision tenant and quota for users without one (fixes 0/0 quotas)
-    if not member:
-        tenant_name = current_user.email.split('@')[0] + "-tenant"
-        # Check if tenant name already exists (avoid unique constraint violation)
-        existing = await db.execute(select(Tenant).where(Tenant.name == tenant_name))
-        tenant = existing.scalar_one_or_none()
-        if not tenant:
-            tenant = Tenant(name=tenant_name)
-            db.add(tenant)
-            await db.flush()
-        
-        member = TenantMember(user_id=current_user.id, tenant_id=tenant.id, is_owner=True)
-        db.add(member)
-        
-        # Create quota if not exists
-        quota_check = await db.execute(select(Quota).where(Quota.tenant_id == tenant.id))
-        if not quota_check.scalar_one_or_none():
-            db.add(Quota(tenant_id=tenant.id, max_vcpu=4, max_ram_mb=8192, max_instances=2))
-        
-        await db.commit()
+    # Check if user has a pending request
+    req_query = select(TenantRequest).where(
+        TenantRequest.user_id == current_user.id,
+        TenantRequest.status == RequestStatus.PENDING
+    )
+    req_res = await db.execute(req_query)
+    pending_request = req_res.scalar_one_or_none()
+    
+    # Get tenant name if assigned
+    tenant_name = None
+    if member:
+        tenant_query = select(Tenant).where(Tenant.id == member.tenant_id)
+        tenant_res = await db.execute(tenant_query)
+        tenant = tenant_res.scalar_one_or_none()
+        if tenant:
+            tenant_name = tenant.name
     
     return {
         "id": current_user.id,
         "email": current_user.email,
         "role": current_user.role.value,
-        "tenant_id": member.tenant_id if member else None
+        "tenant_id": member.tenant_id if member else None,
+        "tenant_name": tenant_name,
+        "has_pending_request": pending_request is not None
     }

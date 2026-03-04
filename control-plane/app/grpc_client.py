@@ -18,8 +18,8 @@ async def provision_instance_via_grpc(instance_id: str, tenant_id: str, vcpu: in
             image=image
         )
         try:
-            # Added 15s timeout to prevent control-plane hangs
-            response = await stub.CreateInstance(request, timeout=15)
+            # Timeout must be long enough for first-time docker image pulls (Ubuntu ~30MB, Debian ~50MB)
+            response = await stub.CreateInstance(request, timeout=120)
             return {
                 "success": response.success,
                 "message": response.message,

@@ -1,7 +1,7 @@
 import enum
 import uuid
 from datetime import datetime
-from sqlalchemy import Column, String, Integer, ForeignKey, DateTime, Enum, Boolean
+from sqlalchemy import Column, String, Integer, ForeignKey, DateTime, Enum, Boolean, Text
 from sqlalchemy.orm import declarative_base, relationship
 from sqlalchemy.dialects.postgresql import UUID
 
@@ -17,6 +17,11 @@ class InstanceStatus(enum.Enum):
 class Role(enum.Enum):
     ADMIN = "ADMIN"
     CLIENT = "CLIENT"
+
+class RequestStatus(enum.Enum):
+    PENDING = "PENDING"
+    APPROVED = "APPROVED"
+    REJECTED = "REJECTED"
 
 class User(Base):
     __tablename__ = "users"
@@ -71,3 +76,17 @@ class Instance(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
 
     tenant = relationship("Tenant", back_populates="instances")
+
+class TenantRequest(Base):
+    __tablename__ = "tenant_requests"
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
+    tenant_id = Column(UUID(as_uuid=True), ForeignKey("tenants.id"), nullable=True)  # optional: request specific tenant
+    message = Column(Text, default="")
+    status = Column(Enum(RequestStatus), default=RequestStatus.PENDING, nullable=False)
+    admin_comment = Column(Text, default="")
+    created_at = Column(DateTime, default=datetime.utcnow)
+    resolved_at = Column(DateTime, nullable=True)
+
+    user = relationship("User")
+    tenant = relationship("Tenant")

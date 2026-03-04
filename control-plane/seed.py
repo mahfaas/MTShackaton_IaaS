@@ -18,22 +18,21 @@ async def seed():
         admin_user = User(email=admin_email, hashed_password=get_password_hash("admin"), role=Role.ADMIN)
         db.add(admin_user)
         
-        # Create Client
+        # Create Client user (already assigned to a tenant for demo)
         client_email = "user@iaas.local"
         client_user = User(email=client_email, hashed_password=get_password_hash("user"), role=Role.CLIENT)
         db.add(client_user)
 
-        # Create Tenant with the hardcoded UUID used in the frontend
+        # Create Tenant (admin creates tenants)
         tenant_uuid = uuid.UUID("123e4567-e89b-12d3-a456-426614174000")
-        tenant = Tenant(id=tenant_uuid, name="Hackathon Project")
+        tenant = Tenant(id=tenant_uuid, name="MTS Cloud Project")
         db.add(tenant)
         await db.flush()
 
-        # Assign both admin and client to the tenant so they can manage it
-        db.add(TenantMember(user_id=admin_user.id, tenant_id=tenant.id, is_owner=True))
-        db.add(TenantMember(user_id=client_user.id, tenant_id=tenant.id, is_owner=True))
+        # Admin assigns client user to tenant
+        db.add(TenantMember(user_id=client_user.id, tenant_id=tenant.id, is_owner=False))
 
-        # Create Quota
+        # Create Quota for the tenant
         quota = Quota(
             tenant_id=tenant.id,
             max_vcpu=16,
@@ -46,7 +45,7 @@ async def seed():
         print("✅ DB Seeded Successfully!")
         print(f"🔹 Administrator: {admin_email} / admin")
         print(f"🔹 Client: {client_email} / user")
-        print(f"🔹 Tenant ID: {tenant.id}")
+        print(f"🔹 Tenant: {tenant.name} (ID: {tenant.id})")
 
 if __name__ == "__main__":
     asyncio.run(seed())
