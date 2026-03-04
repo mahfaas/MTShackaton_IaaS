@@ -105,7 +105,7 @@ async def create_instance_service(db: AsyncSession, tenant_id: str, created_by_i
 
     return {"success": True, "instance": new_instance}
 
-async def delete_worker(instance_id: str, tenant_id: str):
+async def delete_worker(instance_id: str, tenant_id: str, force_db_remove: bool = True):
     """Background task to delete an instance from Docker and DB."""
     async with AsyncSessionLocal() as db:
         try:
@@ -114,15 +114,23 @@ async def delete_worker(instance_id: str, tenant_id: str):
             result = await db.execute(query)
             instance = result.scalar_one_or_none()
             if instance:
-                if grpc_result["success"]:
-                    await db.delete(instance)
-                else:
-                    print(f"Delete via gRPC failed: {grpc_result.get('message')}")
-                    # Allow deletion from DB anyway or mark as FAILED
-                    await db.delete(instance)
+                if not grpc_result["success"]:
+                    print(f"Delete via gRPC failed: {grpc_result.get('message')} — removing from DB anyway")
+                await db.delete(instance)
                 await db.commit()
         except Exception as e:
             print(f"Background delete worker failed: {e}")
+            # Force-remove from DB even on exception
+            if force_db_remove:
+                try:
+                    query = select(Instance).where(Instance.id == instance_id)
+                    result = await db.execute(query)
+                    instance = result.scalar_one_or_none()
+                    if instance:
+                        await db.delete(instance)
+                        await db.commit()
+                except Exception as e2:
+                    print(f"Force DB removal also failed: {e2}")
 
 async def get_tenant_quotas_usage(db: AsyncSession, tenant_id: str) -> dict:
     query = select(Quota).where(Quota.tenant_id == tenant_id)

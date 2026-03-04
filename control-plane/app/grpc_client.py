@@ -96,7 +96,7 @@ async def create_snapshot_via_grpc(instance_id: str, snapshot_name: str) -> dict
         except grpc.aio.AioRpcError as e:
             return {"success": False, "message": f"gRPC Error: {e.details()}"}
 
-async def restore_snapshot_via_grpc(instance_id: str, snapshot_image: str, tenant_id: str, vcpu: int, ram_mb: int) -> dict:
+async def restore_snapshot_via_grpc(instance_id: str, snapshot_image: str, tenant_id: str, vcpu: int, ram_mb: int, image: str = "") -> dict:
     async with grpc.aio.insecure_channel(COMPUTE_NODE_URL) as channel:
         stub = cloud_pb2_grpc.ComputeServiceStub(channel)
         request = cloud_pb2.RestoreSnapshotRequest(
@@ -104,7 +104,8 @@ async def restore_snapshot_via_grpc(instance_id: str, snapshot_image: str, tenan
             snapshot_image=snapshot_image,
             tenant_id=tenant_id,
             vcpu=vcpu,
-            ram_mb=ram_mb
+            ram_mb=ram_mb,
+            image=image
         )
         try:
             response = await stub.RestoreSnapshot(request, timeout=60)

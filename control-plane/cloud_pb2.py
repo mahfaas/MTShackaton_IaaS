@@ -13,7 +13,7 @@ _sym_db = _symbol_database.Default()
 
 
 
-DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x0b\x63loud.proto\x12\x05\x63loud\"C\n\x15\x43reateSnapshotRequest\x12\x13\n\x0binstance_id\x18\x01 \x01(\t\x12\x15\n\rsnapshot_name\x18\x02 \x01(\t\"v\n\x16RestoreSnapshotRequest\x12\x13\n\x0binstance_id\x18\x01 \x01(\t\x12\x16\n\x0esnapshot_image\x18\x02 \x01(\t\x12\x11\n\ttenant_id\x18\x03 \x01(\t\x12\x0c\n\x04vcpu\x18\x04 \x01(\x05\x12\x0e\n\x06ram_mb\x18\x05 \x01(\x05\"t\n\x10SnapshotResponse\x12\x0f\n\x07success\x18\x01 \x01(\x08\x12\x0f\n\x07message\x18\x02 \x01(\t\x12\x16\n\x0esnapshot_image\x18\x03 \x01(\t\x12\x12\n\nsize_bytes\x18\x04 \x01(\x03\x12\x12\n\nip_address\x18\x05 \x01(\t\"l\n\x15\x43reateInstanceRequest\x12\x13\n\x0binstance_id\x18\x01 \x01(\t\x12\x0c\n\x04vcpu\x18\x02 \x01(\x05\x12\x0e\n\x06ram_mb\x18\x03 \x01(\x05\x12\r\n\x05image\x18\x04 \x01(\t\x12\x11\n\ttenant_id\x18\x05 \x01(\t\"?\n\x15\x44\x65leteInstanceRequest\x12\x13\n\x0binstance_id\x18\x01 \x01(\t\x12\x11\n\ttenant_id\x18\x02 \x01(\t\"H\n\x10InstanceResponse\x12\x0f\n\x07success\x18\x01 \x01(\x08\x12\x0f\n\x07message\x18\x02 \x01(\t\x12\x12\n\nip_address\x18\x03 \x01(\t\",\n\x15\x43ontainerStatsRequest\x12\x13\n\x0binstance_id\x18\x01 \x01(\t\"\x93\x01\n\x16\x43ontainerStatsResponse\x12\x19\n\x11\x63pu_usage_percent\x18\x01 \x01(\x01\x12\x14\n\x0cram_usage_mb\x18\x02 \x01(\x01\x12\x14\n\x0cram_limit_mb\x18\x03 \x01(\x01\x12\x18\n\x10network_rx_bytes\x18\x04 \x01(\x01\x12\x18\n\x10network_tx_bytes\x18\x05 \x01(\x01\"\x12\n\x10NodeStatsRequest\"\x92\x01\n\x11NodeStatsResponse\x12\x19\n\x11\x63pu_usage_percent\x18\x01 \x01(\x01\x12\x14\n\x0cram_usage_mb\x18\x02 \x01(\x01\x12\x14\n\x0cram_total_mb\x18\x03 \x01(\x01\x12\x1a\n\x12\x64isk_usage_percent\x18\x04 \x01(\x01\x12\x1a\n\x12\x63ontainers_running\x18\x05 \x01(\x05\x32\xd7\x03\n\x0e\x43omputeService\x12I\n\x0e\x43reateInstance\x12\x1c.cloud.CreateInstanceRequest\x1a\x17.cloud.InstanceResponse\"\x00\x12I\n\x0e\x44\x65leteInstance\x12\x1c.cloud.DeleteInstanceRequest\x1a\x17.cloud.InstanceResponse\"\x00\x12R\n\x11GetContainerStats\x12\x1c.cloud.ContainerStatsRequest\x1a\x1d.cloud.ContainerStatsResponse\"\x00\x12\x43\n\x0cGetNodeStats\x12\x17.cloud.NodeStatsRequest\x1a\x18.cloud.NodeStatsResponse\"\x00\x12I\n\x0e\x43reateSnapshot\x12\x1c.cloud.CreateSnapshotRequest\x1a\x17.cloud.SnapshotResponse\"\x00\x12K\n\x0fRestoreSnapshot\x12\x1d.cloud.RestoreSnapshotRequest\x1a\x17.cloud.SnapshotResponse\"\x00\x42\x08Z\x06/cloudb\x06proto3')
+DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x0b\x63loud.proto\x12\x05\x63loud\"C\n\x15\x43reateSnapshotRequest\x12\x13\n\x0binstance_id\x18\x01 \x01(\t\x12\x15\n\rsnapshot_name\x18\x02 \x01(\t\"\x85\x01\n\x16RestoreSnapshotRequest\x12\x13\n\x0binstance_id\x18\x01 \x01(\t\x12\x16\n\x0esnapshot_image\x18\x02 \x01(\t\x12\x11\n\ttenant_id\x18\x03 \x01(\t\x12\x0c\n\x04vcpu\x18\x04 \x01(\x05\x12\x0e\n\x06ram_mb\x18\x05 \x01(\x05\x12\r\n\x05image\x18\x06 \x01(\t\"t\n\x10SnapshotResponse\x12\x0f\n\x07success\x18\x01 \x01(\x08\x12\x0f\n\x07message\x18\x02 \x01(\t\x12\x16\n\x0esnapshot_image\x18\x03 \x01(\t\x12\x12\n\nsize_bytes\x18\x04 \x01(\x03\x12\x12\n\nip_address\x18\x05 \x01(\t\"l\n\x15\x43reateInstanceRequest\x12\x13\n\x0binstance_id\x18\x01 \x01(\t\x12\x0c\n\x04vcpu\x18\x02 \x01(\x05\x12\x0e\n\x06ram_mb\x18\x03 \x01(\x05\x12\r\n\x05image\x18\x04 \x01(\t\x12\x11\n\ttenant_id\x18\x05 \x01(\t\"?\n\x15\x44\x65leteInstanceRequest\x12\x13\n\x0binstance_id\x18\x01 \x01(\t\x12\x11\n\ttenant_id\x18\x02 \x01(\t\"H\n\x10InstanceResponse\x12\x0f\n\x07success\x18\x01 \x01(\x08\x12\x0f\n\x07message\x18\x02 \x01(\t\x12\x12\n\nip_address\x18\x03 \x01(\t\",\n\x15\x43ontainerStatsRequest\x12\x13\n\x0binstance_id\x18\x01 \x01(\t\"\x93\x01\n\x16\x43ontainerStatsResponse\x12\x19\n\x11\x63pu_usage_percent\x18\x01 \x01(\x01\x12\x14\n\x0cram_usage_mb\x18\x02 \x01(\x01\x12\x14\n\x0cram_limit_mb\x18\x03 \x01(\x01\x12\x18\n\x10network_rx_bytes\x18\x04 \x01(\x01\x12\x18\n\x10network_tx_bytes\x18\x05 \x01(\x01\"\x12\n\x10NodeStatsRequest\"\x92\x01\n\x11NodeStatsResponse\x12\x19\n\x11\x63pu_usage_percent\x18\x01 \x01(\x01\x12\x14\n\x0cram_usage_mb\x18\x02 \x01(\x01\x12\x14\n\x0cram_total_mb\x18\x03 \x01(\x01\x12\x1a\n\x12\x64isk_usage_percent\x18\x04 \x01(\x01\x12\x1a\n\x12\x63ontainers_running\x18\x05 \x01(\x05\x32\xd7\x03\n\x0e\x43omputeService\x12I\n\x0e\x43reateInstance\x12\x1c.cloud.CreateInstanceRequest\x1a\x17.cloud.InstanceResponse\"\x00\x12I\n\x0e\x44\x65leteInstance\x12\x1c.cloud.DeleteInstanceRequest\x1a\x17.cloud.InstanceResponse\"\x00\x12R\n\x11GetContainerStats\x12\x1c.cloud.ContainerStatsRequest\x1a\x1d.cloud.ContainerStatsResponse\"\x00\x12\x43\n\x0cGetNodeStats\x12\x17.cloud.NodeStatsRequest\x1a\x18.cloud.NodeStatsResponse\"\x00\x12I\n\x0e\x43reateSnapshot\x12\x1c.cloud.CreateSnapshotRequest\x1a\x17.cloud.SnapshotResponse\"\x00\x12K\n\x0fRestoreSnapshot\x12\x1d.cloud.RestoreSnapshotRequest\x1a\x17.cloud.SnapshotResponse\"\x00\x42\x08Z\x06/cloudb\x06proto3')
 
 _globals = globals()
 _builder.BuildMessageAndEnumDescriptors(DESCRIPTOR, _globals)
@@ -23,24 +23,24 @@ if _descriptor._USE_C_DESCRIPTORS == False:
   DESCRIPTOR._serialized_options = b'Z\006/cloud'
   _globals['_CREATESNAPSHOTREQUEST']._serialized_start=22
   _globals['_CREATESNAPSHOTREQUEST']._serialized_end=89
-  _globals['_RESTORESNAPSHOTREQUEST']._serialized_start=91
-  _globals['_RESTORESNAPSHOTREQUEST']._serialized_end=209
-  _globals['_SNAPSHOTRESPONSE']._serialized_start=211
-  _globals['_SNAPSHOTRESPONSE']._serialized_end=327
-  _globals['_CREATEINSTANCEREQUEST']._serialized_start=329
-  _globals['_CREATEINSTANCEREQUEST']._serialized_end=437
-  _globals['_DELETEINSTANCEREQUEST']._serialized_start=439
-  _globals['_DELETEINSTANCEREQUEST']._serialized_end=502
-  _globals['_INSTANCERESPONSE']._serialized_start=504
-  _globals['_INSTANCERESPONSE']._serialized_end=576
-  _globals['_CONTAINERSTATSREQUEST']._serialized_start=578
-  _globals['_CONTAINERSTATSREQUEST']._serialized_end=622
-  _globals['_CONTAINERSTATSRESPONSE']._serialized_start=625
-  _globals['_CONTAINERSTATSRESPONSE']._serialized_end=772
-  _globals['_NODESTATSREQUEST']._serialized_start=774
-  _globals['_NODESTATSREQUEST']._serialized_end=792
-  _globals['_NODESTATSRESPONSE']._serialized_start=795
-  _globals['_NODESTATSRESPONSE']._serialized_end=941
-  _globals['_COMPUTESERVICE']._serialized_start=944
-  _globals['_COMPUTESERVICE']._serialized_end=1415
+  _globals['_RESTORESNAPSHOTREQUEST']._serialized_start=92
+  _globals['_RESTORESNAPSHOTREQUEST']._serialized_end=225
+  _globals['_SNAPSHOTRESPONSE']._serialized_start=227
+  _globals['_SNAPSHOTRESPONSE']._serialized_end=343
+  _globals['_CREATEINSTANCEREQUEST']._serialized_start=345
+  _globals['_CREATEINSTANCEREQUEST']._serialized_end=453
+  _globals['_DELETEINSTANCEREQUEST']._serialized_start=455
+  _globals['_DELETEINSTANCEREQUEST']._serialized_end=518
+  _globals['_INSTANCERESPONSE']._serialized_start=520
+  _globals['_INSTANCERESPONSE']._serialized_end=592
+  _globals['_CONTAINERSTATSREQUEST']._serialized_start=594
+  _globals['_CONTAINERSTATSREQUEST']._serialized_end=638
+  _globals['_CONTAINERSTATSRESPONSE']._serialized_start=641
+  _globals['_CONTAINERSTATSRESPONSE']._serialized_end=788
+  _globals['_NODESTATSREQUEST']._serialized_start=790
+  _globals['_NODESTATSREQUEST']._serialized_end=808
+  _globals['_NODESTATSRESPONSE']._serialized_start=811
+  _globals['_NODESTATSRESPONSE']._serialized_end=957
+  _globals['_COMPUTESERVICE']._serialized_start=960
+  _globals['_COMPUTESERVICE']._serialized_end=1431
 # @@protoc_insertion_point(module_scope)

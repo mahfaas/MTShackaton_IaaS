@@ -372,7 +372,7 @@ func (s *server) RestoreSnapshot(ctx context.Context, req *pb.RestoreSnapshotReq
 	containerName := fmt.Sprintf("iaas-vm-%s", req.InstanceId)
 	snapshotImage := req.SnapshotImage
 
-	log.Printf("Restoring container %s from snapshot '%s'", containerName, snapshotImage)
+	log.Printf("Restoring container %s from snapshot '%s' (original image: %s)", containerName, snapshotImage, req.Image)
 
 	// 1. Stop and remove old container
 	timeout := 5
@@ -402,7 +402,8 @@ func (s *server) RestoreSnapshot(ctx context.Context, req *pb.RestoreSnapshotReq
 	memoryBytes := int64(req.RamMb) * 1024 * 1024
 	nanoCpus := int64(req.Vcpu) * 1000000000
 
-	isWebServer := strings.Contains(snapshotImage, "nginx")
+	// Use original image name for web server detection, not snapshot name
+	isWebServer := strings.Contains(req.Image, "nginx")
 
 	hostConfig := &container.HostConfig{
 		Resources: container.Resources{
@@ -444,22 +445,34 @@ func (s *server) RestoreSnapshot(ctx context.Context, req *pb.RestoreSnapshotReq
 		return &pb.SnapshotResponse{Success: false, Message: fmt.Sprintf("Failed to start restored container: %v", err)}, nil
 	}
 
-	// 5. Get IP
+	// 5. Get IP and port
 	inspect, err := s.dockerCli.ContainerInspect(ctx, resp.ID)
 	ipAddress := "unknown"
+	hostPort := ""
 	if err == nil && inspect.NetworkSettings != nil {
 		if netInfo, ok := inspect.NetworkSettings.Networks[networkName]; ok && netInfo.IPAddress != "" {
 			ipAddress = netInfo.IPAddress
 		} else if inspect.NetworkSettings.IPAddress != "" {
 			ipAddress = inspect.NetworkSettings.IPAddress
 		}
+
+		if isWebServer {
+			if portBindings, ok := inspect.NetworkSettings.Ports["80/tcp"]; ok && len(portBindings) > 0 {
+				hostPort = portBindings[0].HostPort
+			}
+		}
 	}
 
-	log.Printf("Container %s restored from '%s', new IP: %s", containerName, snapshotImage, ipAddress)
+	message := "Restored from snapshot"
+	if hostPort != "" {
+		message = fmt.Sprintf("Restored|port:%s", hostPort)
+	}
+
+	log.Printf("Container %s restored from '%s', new IP: %s, hostPort: %s", containerName, snapshotImage, ipAddress, hostPort)
 
 	return &pb.SnapshotResponse{
 		Success:       true,
-		Message:       "Restored from snapshot",
+		Message:       message,
 		SnapshotImage: snapshotImage,
 		IpAddress:     ipAddress,
 	}, nil

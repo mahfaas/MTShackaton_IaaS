@@ -168,6 +168,28 @@ async def get_activity_heatmap(
     
     return heatmap
 
+@router.post("/cleanup-stuck")
+async def cleanup_stuck_instances(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Force-remove all instances stuck in DELETING status."""
+    require_admin(current_user)
+    
+    from app.models.base import InstanceStatus
+    
+    query = select(Instance).where(Instance.status == InstanceStatus.DELETING)
+    result = await db.execute(query)
+    stuck = result.scalars().all()
+    
+    count = 0
+    for inst in stuck:
+        await db.delete(inst)
+        count += 1
+    
+    await db.commit()
+    return {"cleaned": count, "message": f"Removed {count} stuck instances"}
+
 # ==========================================
 #  TENANTS
 # ==========================================

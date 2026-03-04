@@ -35,6 +35,7 @@ message RestoreSnapshotRequest {
   string tenant_id = 3;
   int32 vcpu = 4;
   int32 ram_mb = 5;
+  string image = 6; // Original image name (e.g. "nginx:latest") for port detection
 }
 
 message SnapshotResponse {

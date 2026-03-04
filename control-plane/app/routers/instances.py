@@ -37,7 +37,7 @@ async def create_instance(
         vcpu=req.vcpu,
         ram_mb=req.ram_mb,
         image=req.image,
-        tags=req.tags
+        tags=f"{current_user.email.split('@')[0]}/{req.tags}" if req.tags else current_user.email.split('@')[0]
     )
     
     if not service_result["success"]:
@@ -146,7 +146,8 @@ async def delete_instance(
     background_tasks.add_task(
         delete_worker, 
         instance_id=str(instance.id), 
-        tenant_id=str(instance.tenant_id)
+        tenant_id=str(instance.tenant_id),
+        force_db_remove=True
     )
     return {"message": "Instance deletion queued"}
 
@@ -380,13 +381,20 @@ async def restore_snapshot(
         snapshot_image=backup.snapshot_image,
         tenant_id=str(instance.tenant_id),
         vcpu=instance.vcpu,
-        ram_mb=instance.ram_mb
+        ram_mb=instance.ram_mb,
+        image=instance.image
     )
     
     if result.get("success"):
         instance.status = InstanceStatus.RUNNING
         ip = result.get("ip_address", instance.ip_address)
-        instance.ip_address = ip
+        msg = result.get("message", "")
+        # Parse port mapping (format: "Restored|port:XXXX")
+        if "|port:" in msg:
+            port = msg.split("|port:")[1]
+            instance.ip_address = f"{ip}|port:{port}"
+        else:
+            instance.ip_address = ip
         backup.status = BackupStatus.READY
     else:
         backup.status = BackupStatus.FAILED
@@ -398,8 +406,72 @@ async def restore_snapshot(
     return {
         "success": result.get("success", False),
         "message": result.get("message", ""),
-        "ip_address": result.get("ip_address", "")
+        "ip_address": instance.ip_address
     }
+
+@router.get("/{instance_id}/snapshots/{backup_id}/export")
+async def export_snapshot(
+    instance_id: str,
+    backup_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Export a snapshot as a downloadable tar stream."""
+    from app.models.base import Role, Backup, BackupStatus
+    from fastapi.responses import StreamingResponse
+    import socket as sock
+    import json as export_json
+    
+    member_query = select(TenantMember).where(TenantMember.user_id == current_user.id)
+    member = (await db.execute(member_query)).scalars().first()
+    
+    query = select(Instance).where(Instance.id == instance_id)
+    if member and current_user.role != Role.ADMIN:
+        query = query.where(Instance.tenant_id == member.tenant_id)
+    instance = (await db.execute(query)).scalar_one_or_none()
+    if not instance:
+        raise HTTPException(status_code=404, detail="Instance not found")
+    
+    backup = (await db.execute(select(Backup).where(Backup.id == backup_id, Backup.instance_id == instance_id))).scalar_one_or_none()
+    if not backup or backup.status != BackupStatus.READY:
+        raise HTTPException(status_code=404, detail="Backup not found or not ready")
+    
+    image_name = backup.snapshot_image
+    
+    def docker_image_stream():
+        """Stream docker image as tar via Docker API unix socket."""
+        s = sock.socket(sock.AF_UNIX, sock.SOCK_STREAM)
+        s.settimeout(120)
+        s.connect("/var/run/docker.sock")
+        request = f"GET /images/{image_name}/get HTTP/1.1\r\nHost: localhost\r\n\r\n".encode()
+        s.sendall(request)
+        # Read HTTP headers
+        header_data = b""
+        while b"\r\n\r\n" not in header_data:
+            chunk = s.recv(4096)
+            if not chunk:
+                break
+            header_data += chunk
+        # After headers, stream the body
+        if b"\r\n\r\n" in header_data:
+            _, body_start = header_data.split(b"\r\n\r\n", 1)
+            if body_start:
+                yield body_start
+        while True:
+            try:
+                chunk = s.recv(65536)
+                if not chunk:
+                    break
+                yield chunk
+            except sock.timeout:
+                break
+        s.close()
+    
+    return StreamingResponse(
+        docker_image_stream(),
+        media_type="application/x-tar",
+        headers={"Content-Disposition": f"attachment; filename={image_name}.tar"}
+    )
 
 from pydantic import BaseModel as PydanticBase
 

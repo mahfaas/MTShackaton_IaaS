@@ -2,7 +2,7 @@ import enum
 import uuid
 from datetime import datetime
 from sqlalchemy import Column, String, Integer, ForeignKey, DateTime, Enum, Boolean, Text
-from sqlalchemy.orm import declarative_base, relationship
+from sqlalchemy.orm import declarative_base, relationship, backref
 from sqlalchemy.dialects.postgresql import UUID
 
 Base = declarative_base()
@@ -109,4 +109,4 @@ class Backup(Base):
     size_mb = Column(Integer, default=0)
     created_at = Column(DateTime, default=datetime.utcnow)
 
-    instance = relationship("Instance", backref="backups")
+    instance = relationship("Instance", backref=backref("backups", cascade="all, delete-orphan"))

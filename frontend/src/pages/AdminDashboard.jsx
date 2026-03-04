@@ -276,7 +276,7 @@ export default function AdminDashboard() {
                                 </div>
                             </div>
 
-                            {/* Radar Chart: Node Health (Mocked partly) */}
+                            {/* Radar Chart: Node Health */}
                             <div className="apple-card p-6 shadow-sm flex flex-col">
                                 <h3 className="text-lg font-semibold text-gray-900 mb-1">Physical Node Load</h3>
                                 <p className="text-xs text-gray-500 mb-6">System resource utilization (Radar Profile)</p>
@@ -287,7 +287,7 @@ export default function AdminDashboard() {
                                                 { subject: 'CPU', A: clusterStats.node_health.cpu_usage_percent || 0, fullMark: 100 },
                                                 { subject: 'RAM', A: (clusterStats.node_health.ram_usage_mb / clusterStats.node_health.ram_total_mb) * 100 || 0, fullMark: 100 },
                                                 { subject: 'Disk I/O', A: clusterStats.node_health.disk_usage_percent || 0, fullMark: 100 },
-                                                { subject: 'Network', A: 35 /* Mock */, fullMark: 100 },
+                                                { subject: 'Containers', A: Math.min(clusterStats.node_health.containers_running * 10, 100) || 0, fullMark: 100 },
                                                 { subject: 'Docker', A: clusterStats.node_health.containers_running * 5 || 0, fullMark: 100 },
                                             ]}>
                                                 <PolarGrid stroke="#e5e7eb" />
@@ -699,40 +699,39 @@ export default function AdminDashboard() {
                                             {req.status === 'PENDING' && (
                                                 <div className="flex items-center gap-2 md:flex-shrink-0">
                                                     {/* Approve with searchable tenant selector */}
-                                                    <div className="flex items-center gap-2 bg-white rounded-2xl p-1.5 border border-gray-200 shadow-sm relative">
-                                                        <div className="relative">
-                                                            <div className="flex items-center gap-1 border border-gray-200 rounded-lg px-2 py-1">
-                                                                <Search size={12} className="text-gray-400" />
+                                                    <div className="flex items-center gap-2 bg-white rounded-2xl p-1.5 border border-gray-200 shadow-sm">
+                                                        <div className="flex flex-col gap-1">
+                                                            <div className="flex items-center gap-1 border border-gray-200 rounded-lg px-2 py-0.5">
+                                                                <Search size={11} className="text-gray-400" />
                                                                 <input
                                                                     type="text"
-                                                                    placeholder="Search tenant..."
+                                                                    placeholder="Filter..."
                                                                     value={tenantSearches[req.id] || ''}
                                                                     onChange={(e) => setTenantSearches(prev => ({ ...prev, [req.id]: e.target.value }))}
-                                                                    className="text-xs border-0 bg-transparent w-28 py-0.5 text-gray-700 focus:outline-none placeholder-gray-400"
+                                                                    className="text-xs border-0 bg-transparent w-20 py-0 text-gray-700 focus:outline-none placeholder-gray-400"
                                                                 />
                                                             </div>
-                                                            {(tenantSearches[req.id] !== undefined) && (
-                                                                <div className="absolute top-full left-0 mt-1 w-48 bg-white rounded-xl shadow-lg border border-gray-100 z-20 max-h-40 overflow-y-auto">
-                                                                    {tenants
-                                                                        .filter(t => t.name.toLowerCase().includes((tenantSearches[req.id] || '').toLowerCase()))
-                                                                        .map(t => (
-                                                                            <button
-                                                                                key={t.id}
-                                                                                onClick={() => {
-                                                                                    handleResolveRequest(req.id, 'approve', t.id);
-                                                                                    setTenantSearches(prev => ({ ...prev, [req.id]: undefined }));
-                                                                                }}
-                                                                                className="w-full text-left px-3 py-2 text-xs hover:bg-indigo-50 text-gray-700 transition-colors first:rounded-t-xl last:rounded-b-xl"
-                                                                            >
-                                                                                {t.name}
-                                                                            </button>
-                                                                        ))}
-                                                                    {tenants.filter(t => t.name.toLowerCase().includes((tenantSearches[req.id] || '').toLowerCase())).length === 0 && (
-                                                                        <div className="px-3 py-2 text-xs text-gray-400 italic">No tenants found</div>
-                                                                    )}
-                                                                </div>
-                                                            )}
+                                                            <select
+                                                                id={`tenant-select-${req.id}`}
+                                                                className="text-xs border border-gray-200 rounded-lg bg-transparent px-2 py-1 text-gray-700 focus:outline-none"
+                                                                defaultValue={tenants[0]?.id || ''}
+                                                            >
+                                                                {tenants
+                                                                    .filter(t => t.name.toLowerCase().includes((tenantSearches[req.id] || '').toLowerCase()))
+                                                                    .map(t => (
+                                                                        <option key={t.id} value={t.id}>{t.name}</option>
+                                                                    ))}
+                                                            </select>
                                                         </div>
+                                                        <button
+                                                            onClick={() => {
+                                                                const sel = document.getElementById(`tenant-select-${req.id}`);
+                                                                handleResolveRequest(req.id, 'approve', sel?.value);
+                                                            }}
+                                                            className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-green-600 text-white rounded-xl text-xs font-medium hover:bg-green-700 transition-colors"
+                                                        >
+                                                            <CheckCircle size={13} /> Approve
+                                                        </button>
                                                     </div>
                                                     <button
                                                         onClick={() => handleResolveRequest(req.id, 'reject')}

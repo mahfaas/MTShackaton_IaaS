@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { api } from '../lib/api';
-import { X, Camera, RotateCcw, Clock, CheckCircle, Loader2, AlertTriangle } from 'lucide-react';
+import { X, Camera, RotateCcw, Clock, CheckCircle, Loader2, AlertTriangle, Download } from 'lucide-react';
 
 export default function BackupManager({ isOpen, onClose, instance, onRestored }) {
     const [backups, setBackups] = useState([]);
@@ -51,6 +51,22 @@ export default function BackupManager({ isOpen, onClose, instance, onRestored })
         } finally {
             setRestoringId(null);
         }
+    };
+
+    const handleExport = (backupId) => {
+        const token = localStorage.getItem('token');
+        const url = `http://localhost:8000/api/v1/instances/${instance.id}/snapshots/${backupId}/export`;
+        // Download via hidden link with auth header workaround
+        fetch(url, { headers: { Authorization: `Bearer ${token}` } })
+            .then(res => res.blob())
+            .then(blob => {
+                const a = document.createElement('a');
+                a.href = URL.createObjectURL(blob);
+                a.download = `snapshot-${backupId}.tar`;
+                a.click();
+                URL.revokeObjectURL(a.href);
+            })
+            .catch(e => console.error('Export failed', e));
     };
 
     if (!isOpen) return null;
@@ -125,18 +141,27 @@ export default function BackupManager({ isOpen, onClose, instance, onRestored })
                                                 {cfg.label}
                                             </span>
                                             {b.status === 'READY' && (
-                                                <button
-                                                    onClick={() => handleRestore(b.id)}
-                                                    disabled={restoringId === b.id}
-                                                    className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-blue-600 hover:bg-blue-50 rounded-lg transition-colors border border-blue-200 disabled:opacity-50"
-                                                >
-                                                    {restoringId === b.id ? (
-                                                        <Loader2 size={12} className="animate-spin" />
-                                                    ) : (
-                                                        <RotateCcw size={12} />
-                                                    )}
-                                                    Restore
-                                                </button>
+                                                <>
+                                                    <button
+                                                        onClick={() => handleExport(b.id)}
+                                                        className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors border border-emerald-200"
+                                                        title="Download snapshot as .tar"
+                                                    >
+                                                        <Download size={12} /> Export
+                                                    </button>
+                                                    <button
+                                                        onClick={() => handleRestore(b.id)}
+                                                        disabled={restoringId === b.id}
+                                                        className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-blue-600 hover:bg-blue-50 rounded-lg transition-colors border border-blue-200 disabled:opacity-50"
+                                                    >
+                                                        {restoringId === b.id ? (
+                                                            <Loader2 size={12} className="animate-spin" />
+                                                        ) : (
+                                                            <RotateCcw size={12} />
+                                                        )}
+                                                        Restore
+                                                    </button>
+                                                </>
                                             )}
                                         </div>
                                     </div>
