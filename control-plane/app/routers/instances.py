@@ -254,6 +254,153 @@ async def get_instance_stats(
         
     return stats
 
+# ==========================================
+#  SNAPSHOT / BACKUP MANAGEMENT
+# ==========================================
+
+@router.post("/{instance_id}/snapshots")
+async def create_snapshot(
+    instance_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    from app.models.base import InstanceStatus, Role, Backup, BackupStatus
+    from app.grpc_client import create_snapshot_via_grpc
+    from datetime import datetime
+    
+    member_query = select(TenantMember).where(TenantMember.user_id == current_user.id)
+    member = (await db.execute(member_query)).scalars().first()
+    
+    query = select(Instance).where(Instance.id == instance_id)
+    if member and current_user.role != Role.ADMIN:
+        query = query.where(Instance.tenant_id == member.tenant_id)
+    instance = (await db.execute(query)).scalar_one_or_none()
+    if not instance:
+        raise HTTPException(status_code=404, detail="Instance not found")
+    if instance.status != InstanceStatus.RUNNING:
+        raise HTTPException(status_code=400, detail="Can only snapshot running instances")
+    
+    timestamp = datetime.utcnow().strftime("%Y%m%d-%H%M%S")
+    snapshot_name = f"snapshot-{instance_id}-{timestamp}"
+    
+    backup = Backup(
+        instance_id=instance.id,
+        name=snapshot_name,
+        status=BackupStatus.CREATING
+    )
+    db.add(backup)
+    await db.commit()
+    await db.refresh(backup)
+    
+    result = await create_snapshot_via_grpc(str(instance_id), snapshot_name)
+    
+    if result.get("success"):
+        backup.status = BackupStatus.READY
+        backup.snapshot_image = result.get("snapshot_image", snapshot_name)
+        backup.size_mb = int((result.get("size_bytes", 0)) / (1024 * 1024))
+    else:
+        backup.status = BackupStatus.FAILED
+    
+    db.add(backup)
+    await db.commit()
+    await db.refresh(backup)
+    
+    return {
+        "id": backup.id,
+        "name": backup.name,
+        "status": backup.status.value,
+        "size_mb": backup.size_mb,
+        "snapshot_image": backup.snapshot_image,
+        "created_at": backup.created_at,
+        "success": result.get("success", False),
+        "message": result.get("message", "")
+    }
+
+@router.get("/{instance_id}/snapshots")
+async def list_snapshots(
+    instance_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    from app.models.base import Role, Backup
+    
+    member_query = select(TenantMember).where(TenantMember.user_id == current_user.id)
+    member = (await db.execute(member_query)).scalars().first()
+    
+    query = select(Instance).where(Instance.id == instance_id)
+    if member and current_user.role != Role.ADMIN:
+        query = query.where(Instance.tenant_id == member.tenant_id)
+    instance = (await db.execute(query)).scalar_one_or_none()
+    if not instance:
+        raise HTTPException(status_code=404, detail="Instance not found")
+    
+    backups_q = select(Backup).where(Backup.instance_id == instance_id).order_by(Backup.created_at.desc())
+    result = await db.execute(backups_q)
+    backups = result.scalars().all()
+    
+    return [{
+        "id": b.id,
+        "name": b.name,
+        "status": b.status.value,
+        "size_mb": b.size_mb,
+        "snapshot_image": b.snapshot_image,
+        "created_at": b.created_at
+    } for b in backups]
+
+@router.post("/{instance_id}/snapshots/{backup_id}/restore")
+async def restore_snapshot(
+    instance_id: str,
+    backup_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    from app.models.base import InstanceStatus, Role, Backup, BackupStatus
+    from app.grpc_client import restore_snapshot_via_grpc
+    
+    member_query = select(TenantMember).where(TenantMember.user_id == current_user.id)
+    member = (await db.execute(member_query)).scalars().first()
+    
+    query = select(Instance).where(Instance.id == instance_id)
+    if member and current_user.role != Role.ADMIN:
+        query = query.where(Instance.tenant_id == member.tenant_id)
+    instance = (await db.execute(query)).scalar_one_or_none()
+    if not instance:
+        raise HTTPException(status_code=404, detail="Instance not found")
+    
+    backup = (await db.execute(select(Backup).where(Backup.id == backup_id, Backup.instance_id == instance_id))).scalar_one_or_none()
+    if not backup or backup.status != BackupStatus.READY:
+        raise HTTPException(status_code=404, detail="Backup not found or not ready")
+    
+    backup.status = BackupStatus.RESTORING
+    db.add(backup)
+    await db.commit()
+    
+    result = await restore_snapshot_via_grpc(
+        instance_id=str(instance_id),
+        snapshot_image=backup.snapshot_image,
+        tenant_id=str(instance.tenant_id),
+        vcpu=instance.vcpu,
+        ram_mb=instance.ram_mb
+    )
+    
+    if result.get("success"):
+        instance.status = InstanceStatus.RUNNING
+        ip = result.get("ip_address", instance.ip_address)
+        instance.ip_address = ip
+        backup.status = BackupStatus.READY
+    else:
+        backup.status = BackupStatus.FAILED
+    
+    db.add(instance)
+    db.add(backup)
+    await db.commit()
+    
+    return {
+        "success": result.get("success", False),
+        "message": result.get("message", ""),
+        "ip_address": result.get("ip_address", "")
+    }
+
 from pydantic import BaseModel as PydanticBase
 
 class AccessRequestCreate(PydanticBase):

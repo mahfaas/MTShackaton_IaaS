@@ -35,6 +35,16 @@ class ComputeServiceStub(object):
                 request_serializer=cloud__pb2.NodeStatsRequest.SerializeToString,
                 response_deserializer=cloud__pb2.NodeStatsResponse.FromString,
                 )
+        self.CreateSnapshot = channel.unary_unary(
+                '/cloud.ComputeService/CreateSnapshot',
+                request_serializer=cloud__pb2.CreateSnapshotRequest.SerializeToString,
+                response_deserializer=cloud__pb2.SnapshotResponse.FromString,
+                )
+        self.RestoreSnapshot = channel.unary_unary(
+                '/cloud.ComputeService/RestoreSnapshot',
+                request_serializer=cloud__pb2.RestoreSnapshotRequest.SerializeToString,
+                response_deserializer=cloud__pb2.SnapshotResponse.FromString,
+                )
 
 
 class ComputeServiceServicer(object):
@@ -69,6 +79,19 @@ class ComputeServiceServicer(object):
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
+    def CreateSnapshot(self, request, context):
+        """Snapshot management
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def RestoreSnapshot(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
 
 def add_ComputeServiceServicer_to_server(servicer, server):
     rpc_method_handlers = {
@@ -91,6 +114,16 @@ def add_ComputeServiceServicer_to_server(servicer, server):
                     servicer.GetNodeStats,
                     request_deserializer=cloud__pb2.NodeStatsRequest.FromString,
                     response_serializer=cloud__pb2.NodeStatsResponse.SerializeToString,
+            ),
+            'CreateSnapshot': grpc.unary_unary_rpc_method_handler(
+                    servicer.CreateSnapshot,
+                    request_deserializer=cloud__pb2.CreateSnapshotRequest.FromString,
+                    response_serializer=cloud__pb2.SnapshotResponse.SerializeToString,
+            ),
+            'RestoreSnapshot': grpc.unary_unary_rpc_method_handler(
+                    servicer.RestoreSnapshot,
+                    request_deserializer=cloud__pb2.RestoreSnapshotRequest.FromString,
+                    response_serializer=cloud__pb2.SnapshotResponse.SerializeToString,
             ),
     }
     generic_handler = grpc.method_handlers_generic_handler(
@@ -168,5 +201,39 @@ class ComputeService(object):
         return grpc.experimental.unary_unary(request, target, '/cloud.ComputeService/GetNodeStats',
             cloud__pb2.NodeStatsRequest.SerializeToString,
             cloud__pb2.NodeStatsResponse.FromString,
+            options, channel_credentials,
+            insecure, call_credentials, compression, wait_for_ready, timeout, metadata)
+
+    @staticmethod
+    def CreateSnapshot(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(request, target, '/cloud.ComputeService/CreateSnapshot',
+            cloud__pb2.CreateSnapshotRequest.SerializeToString,
+            cloud__pb2.SnapshotResponse.FromString,
+            options, channel_credentials,
+            insecure, call_credentials, compression, wait_for_ready, timeout, metadata)
+
+    @staticmethod
+    def RestoreSnapshot(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(request, target, '/cloud.ComputeService/RestoreSnapshot',
+            cloud__pb2.RestoreSnapshotRequest.SerializeToString,
+            cloud__pb2.SnapshotResponse.FromString,
             options, channel_credentials,
             insecure, call_credentials, compression, wait_for_ready, timeout, metadata)

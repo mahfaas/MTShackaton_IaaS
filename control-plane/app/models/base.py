@@ -92,3 +92,21 @@ class TenantRequest(Base):
 
     user = relationship("User")
     tenant = relationship("Tenant")
+
+class BackupStatus(enum.Enum):
+    CREATING = "CREATING"
+    READY = "READY"
+    RESTORING = "RESTORING"
+    FAILED = "FAILED"
+
+class Backup(Base):
+    __tablename__ = "backups"
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    instance_id = Column(UUID(as_uuid=True), ForeignKey("instances.id"), nullable=False)
+    name = Column(String, nullable=False)
+    snapshot_image = Column(String, nullable=True)  # Docker image tag
+    status = Column(Enum(BackupStatus), default=BackupStatus.CREATING, nullable=False)
+    size_mb = Column(Integer, default=0)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    instance = relationship("Instance", backref="backups")

@@ -1,13 +1,18 @@
 package main
 
 import (
+	"bufio"
 	"context"
 	"encoding/json"
 	"fmt"
 	"io"
 	"log"
 	"net"
+	"os"
+	"strconv"
 	"strings"
+	"syscall"
+	"time"
 
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/image"
@@ -122,14 +127,12 @@ func (s *server) CreateInstance(ctx context.Context, req *pb.CreateInstanceReque
 	ipAddress := "unknown"
 	hostPort := ""
 	if err == nil && inspect.NetworkSettings != nil {
-		// When using custom network (SDN), IP is in Networks map, not root IPAddress
 		if netInfo, ok := inspect.NetworkSettings.Networks[networkName]; ok && netInfo.IPAddress != "" {
 			ipAddress = netInfo.IPAddress
 		} else if inspect.NetworkSettings.IPAddress != "" {
 			ipAddress = inspect.NetworkSettings.IPAddress
 		}
 
-		// Get the mapped host port for web servers
 		if isWebServer {
 			if portBindings, ok := inspect.NetworkSettings.Ports["80/tcp"]; ok && len(portBindings) > 0 {
 				hostPort = portBindings[0].HostPort
@@ -151,15 +154,12 @@ func (s *server) DeleteInstance(ctx context.Context, req *pb.DeleteInstanceReque
 
 	containerName := fmt.Sprintf("iaas-vm-%s", req.InstanceId)
 
-	// Stop container (timeout 10s)
 	timeout := 10
 	err := s.dockerCli.ContainerStop(ctx, containerName, container.StopOptions{Timeout: &timeout})
 	if err != nil {
 		log.Printf("Warning: Failed to stop container %s: %v", containerName, err)
-		// Try to force remove anyway
 	}
 
-	// Remove container
 	err = s.dockerCli.ContainerRemove(ctx, containerName, container.RemoveOptions{
 		Force:         true,
 		RemoveVolumes: true,
@@ -188,7 +188,6 @@ func (s *server) GetContainerStats(ctx context.Context, req *pb.ContainerStatsRe
 		return nil, fmt.Errorf("failed to decode stats: %v", err)
 	}
 
-	// Calculate CPU Percent
 	cpuPercent := 0.0
 	cpuDelta := float64(v.CPUStats.CPUUsage.TotalUsage - v.PreCPUStats.CPUUsage.TotalUsage)
 	systemDelta := float64(v.CPUStats.SystemUsage - v.PreCPUStats.SystemUsage)
@@ -196,11 +195,9 @@ func (s *server) GetContainerStats(ctx context.Context, req *pb.ContainerStatsRe
 		cpuPercent = (cpuDelta / systemDelta) * float64(len(v.CPUStats.CPUUsage.PercpuUsage)) * 100.0
 	}
 
-	// Calculate RAM
 	ramMB := float64(v.MemoryStats.Usage) / (1024 * 1024)
 	ramLimitMB := float64(v.MemoryStats.Limit) / (1024 * 1024)
 
-	// Calculate Network
 	rxBytes := 0.0
 	txBytes := 0.0
 	for _, net := range v.Networks {
@@ -217,24 +214,254 @@ func (s *server) GetContainerStats(ctx context.Context, req *pb.ContainerStatsRe
 	}, nil
 }
 
-func (s *server) GetNodeStats(ctx context.Context, req *pb.NodeStatsRequest) (*pb.NodeStatsResponse, error) {
-	// For node stats, we'll return some dummy physical server stats for now since getting
-	// host-level physical stats inside a container requires significant privileges and volumes.
-	// We will count running containers as real data.
+// ===== REAL NODE STATS (reads from /proc) =====
 
+func readCPUUsage() float64 {
+	// Try host proc first, fallback to container /proc
+	procPath := "/host/proc/stat"
+	if _, err := os.Stat(procPath); os.IsNotExist(err) {
+		procPath = "/proc/stat"
+	}
+
+	read := func() (idle, total uint64) {
+		f, err := os.Open(procPath)
+		if err != nil {
+			return 0, 0
+		}
+		defer f.Close()
+		scanner := bufio.NewScanner(f)
+		for scanner.Scan() {
+			line := scanner.Text()
+			if strings.HasPrefix(line, "cpu ") {
+				fields := strings.Fields(line)
+				if len(fields) < 5 {
+					return 0, 0
+				}
+				var sum uint64
+				for i := 1; i < len(fields); i++ {
+					val, _ := strconv.ParseUint(fields[i], 10, 64)
+					sum += val
+					if i == 4 { // idle is the 4th value (index 4)
+						idle = val
+					}
+				}
+				return idle, sum
+			}
+		}
+		return 0, 0
+	}
+
+	idle1, total1 := read()
+	time.Sleep(500 * time.Millisecond)
+	idle2, total2 := read()
+
+	idleDelta := float64(idle2 - idle1)
+	totalDelta := float64(total2 - total1)
+	if totalDelta == 0 {
+		return 0
+	}
+	return ((totalDelta - idleDelta) / totalDelta) * 100.0
+}
+
+func readMemInfo() (usageMB, totalMB float64) {
+	procPath := "/host/proc/meminfo"
+	if _, err := os.Stat(procPath); os.IsNotExist(err) {
+		procPath = "/proc/meminfo"
+	}
+
+	f, err := os.Open(procPath)
+	if err != nil {
+		return 0, 0
+	}
+	defer f.Close()
+
+	vals := map[string]float64{}
+	scanner := bufio.NewScanner(f)
+	for scanner.Scan() {
+		line := scanner.Text()
+		parts := strings.Fields(line)
+		if len(parts) < 2 {
+			continue
+		}
+		key := strings.TrimSuffix(parts[0], ":")
+		val, _ := strconv.ParseFloat(parts[1], 64)
+		vals[key] = val // values in kB
+	}
+
+	totalMB = vals["MemTotal"] / 1024.0
+	available := vals["MemAvailable"] / 1024.0
+	usageMB = totalMB - available
+	return
+}
+
+func readDiskUsage() float64 {
+	path := "/host/rootfs"
+	if _, err := os.Stat(path); os.IsNotExist(err) {
+		path = "/"
+	}
+
+	var stat syscall.Statfs_t
+	if err := syscall.Statfs(path, &stat); err != nil {
+		return 0
+	}
+	total := stat.Blocks * uint64(stat.Bsize)
+	free := stat.Bfree * uint64(stat.Bsize)
+	if total == 0 {
+		return 0
+	}
+	return float64(total-free) / float64(total) * 100.0
+}
+
+func (s *server) GetNodeStats(ctx context.Context, req *pb.NodeStatsRequest) (*pb.NodeStatsResponse, error) {
 	containers, err := s.dockerCli.ContainerList(ctx, container.ListOptions{})
 	running := 0
 	if err == nil {
 		running = len(containers)
 	}
 
-	// Mock data for physical node:
+	cpuPercent := readCPUUsage()
+	ramUsage, ramTotal := readMemInfo()
+	diskPercent := readDiskUsage()
+
 	return &pb.NodeStatsResponse{
-		CpuUsagePercent:   32.5,
-		RamUsageMb:        8192.0,
-		RamTotalMb:        32768.0,
-		DiskUsagePercent:  45.2,
+		CpuUsagePercent:   cpuPercent,
+		RamUsageMb:        ramUsage,
+		RamTotalMb:        ramTotal,
+		DiskUsagePercent:  diskPercent,
 		ContainersRunning: int32(running),
+	}, nil
+}
+
+// ===== SNAPSHOT MANAGEMENT =====
+
+func (s *server) CreateSnapshot(ctx context.Context, req *pb.CreateSnapshotRequest) (*pb.SnapshotResponse, error) {
+	containerName := fmt.Sprintf("iaas-vm-%s", req.InstanceId)
+	snapshotImage := req.SnapshotName
+
+	log.Printf("Creating snapshot '%s' for container %s", snapshotImage, containerName)
+
+	// docker commit
+	commitResp, err := s.dockerCli.ContainerCommit(ctx, containerName, container.CommitOptions{
+		Reference: snapshotImage,
+		Comment:   fmt.Sprintf("Snapshot of instance %s", req.InstanceId),
+		Pause:     true,
+	})
+	if err != nil {
+		log.Printf("Error creating snapshot: %v", err)
+		return &pb.SnapshotResponse{Success: false, Message: fmt.Sprintf("Failed to create snapshot: %v", err)}, nil
+	}
+
+	// Get image size
+	inspectImg, _, err := s.dockerCli.ImageInspectWithRaw(ctx, commitResp.ID)
+	var sizeBytes int64
+	if err == nil {
+		sizeBytes = inspectImg.Size
+	}
+
+	log.Printf("Snapshot '%s' created successfully (size: %d bytes)", snapshotImage, sizeBytes)
+
+	return &pb.SnapshotResponse{
+		Success:       true,
+		Message:       "Snapshot created",
+		SnapshotImage: snapshotImage,
+		SizeBytes:     sizeBytes,
+	}, nil
+}
+
+func (s *server) RestoreSnapshot(ctx context.Context, req *pb.RestoreSnapshotRequest) (*pb.SnapshotResponse, error) {
+	containerName := fmt.Sprintf("iaas-vm-%s", req.InstanceId)
+	snapshotImage := req.SnapshotImage
+
+	log.Printf("Restoring container %s from snapshot '%s'", containerName, snapshotImage)
+
+	// 1. Stop and remove old container
+	timeout := 5
+	_ = s.dockerCli.ContainerStop(ctx, containerName, container.StopOptions{Timeout: &timeout})
+	_ = s.dockerCli.ContainerRemove(ctx, containerName, container.RemoveOptions{Force: true, RemoveVolumes: true})
+
+	// 2. Prepare network
+	networkName := fmt.Sprintf("tenant-%s", req.TenantId)
+	networks, err := s.dockerCli.NetworkList(ctx, network.ListOptions{})
+	var networkID string
+	if err == nil {
+		for _, n := range networks {
+			if n.Name == networkName {
+				networkID = n.ID
+				break
+			}
+		}
+	}
+	if networkID == "" {
+		res, err := s.dockerCli.NetworkCreate(ctx, networkName, network.CreateOptions{Driver: "bridge"})
+		if err != nil {
+			return &pb.SnapshotResponse{Success: false, Message: fmt.Sprintf("Failed to create network: %v", err)}, nil
+		}
+		networkID = res.ID
+	}
+
+	memoryBytes := int64(req.RamMb) * 1024 * 1024
+	nanoCpus := int64(req.Vcpu) * 1000000000
+
+	isWebServer := strings.Contains(snapshotImage, "nginx")
+
+	hostConfig := &container.HostConfig{
+		Resources: container.Resources{
+			Memory:   memoryBytes,
+			NanoCPUs: nanoCpus,
+		},
+	}
+
+	exposedPorts := map[nat.Port]struct{}{}
+	if isWebServer {
+		exposedPorts["80/tcp"] = struct{}{}
+		hostConfig.PortBindings = nat.PortMap{
+			"80/tcp": []nat.PortBinding{{HostIP: "0.0.0.0", HostPort: "0"}},
+		}
+	}
+
+	netConfig := &network.NetworkingConfig{
+		EndpointsConfig: map[string]*network.EndpointSettings{
+			networkName: {NetworkID: networkID},
+		},
+	}
+
+	containerConfig := &container.Config{
+		Image:        snapshotImage,
+		ExposedPorts: exposedPorts,
+	}
+	if !isWebServer {
+		containerConfig.Cmd = []string{"tail", "-f", "/dev/null"}
+	}
+
+	// 3. Create new container from snapshot image
+	resp, err := s.dockerCli.ContainerCreate(ctx, containerConfig, hostConfig, netConfig, nil, containerName)
+	if err != nil {
+		return &pb.SnapshotResponse{Success: false, Message: fmt.Sprintf("Failed to create container from snapshot: %v", err)}, nil
+	}
+
+	// 4. Start
+	if err := s.dockerCli.ContainerStart(ctx, resp.ID, container.StartOptions{}); err != nil {
+		return &pb.SnapshotResponse{Success: false, Message: fmt.Sprintf("Failed to start restored container: %v", err)}, nil
+	}
+
+	// 5. Get IP
+	inspect, err := s.dockerCli.ContainerInspect(ctx, resp.ID)
+	ipAddress := "unknown"
+	if err == nil && inspect.NetworkSettings != nil {
+		if netInfo, ok := inspect.NetworkSettings.Networks[networkName]; ok && netInfo.IPAddress != "" {
+			ipAddress = netInfo.IPAddress
+		} else if inspect.NetworkSettings.IPAddress != "" {
+			ipAddress = inspect.NetworkSettings.IPAddress
+		}
+	}
+
+	log.Printf("Container %s restored from '%s', new IP: %s", containerName, snapshotImage, ipAddress)
+
+	return &pb.SnapshotResponse{
+		Success:       true,
+		Message:       "Restored from snapshot",
+		SnapshotImage: snapshotImage,
+		IpAddress:     ipAddress,
 	}, nil
 }
 

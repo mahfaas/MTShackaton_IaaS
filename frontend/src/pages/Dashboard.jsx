@@ -1,11 +1,12 @@
 import { useState, useEffect } from 'react';
 import { api } from '../lib/api';
 import CreateInstanceModal from '../components/CreateInstanceModal';
-import { Activity, Server, Cpu, LogOut, Plus, CloudRain, Clock, Trash2, PieChart, TerminalSquare, Send, CheckCircle, XCircle, AlertCircle, Play, Square } from 'lucide-react';
+import { Activity, Server, Cpu, LogOut, Plus, CloudRain, Clock, Trash2, PieChart, TerminalSquare, Send, CheckCircle, XCircle, AlertCircle, Play, Square, Camera } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
 import TerminalModal from '../components/TerminalModal';
 import InstanceMonitoringModal from '../components/InstanceMonitoringModal';
+import BackupManager from '../components/BackupManager';
 import { PieChart as RechartsPieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 export default function Dashboard() {
     const { user, logout, setUser } = useAuth();
@@ -17,6 +18,7 @@ export default function Dashboard() {
     const [activeTab, setActiveTab] = useState('compute');
     const [terminalInstance, setTerminalInstance] = useState(null);
     const [monitoringInstance, setMonitoringInstance] = useState(null);
+    const [backupInstance, setBackupInstance] = useState(null);
 
     // Request state
     const [requestMessage, setRequestMessage] = useState('');
@@ -451,6 +453,15 @@ export default function Dashboard() {
                                                             <Activity size={16} />
                                                         </button>
                                                     )}
+                                                    {(inst.status === 'RUNNING' || inst.status === 'STOPPED') && (
+                                                        <button
+                                                            onClick={() => setBackupInstance(inst)}
+                                                            className="p-2 text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"
+                                                            title="Snapshots"
+                                                        >
+                                                            <Camera size={16} />
+                                                        </button>
+                                                    )}
                                                     <button
                                                         onClick={() => handleDelete(inst.id)}
                                                         disabled={inst.status === 'DELETING' || inst.status === 'DELETED'}
@@ -626,6 +637,13 @@ export default function Dashboard() {
                 onClose={() => setMonitoringInstance(null)}
                 instanceId={monitoringInstance?.id}
                 instanceName={monitoringInstance?.name}
+            />
+
+            <BackupManager
+                isOpen={!!backupInstance}
+                onClose={() => setBackupInstance(null)}
+                instance={backupInstance}
+                onRestored={() => fetchData()}
             />
         </div>
     );

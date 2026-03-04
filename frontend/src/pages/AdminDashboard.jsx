@@ -1,9 +1,9 @@
 import { useState, useEffect } from 'react';
 import { api } from '../lib/api';
-import { Users, Server, Cpu, LogOut, CloudRain, Activity, Edit2, Trash2, Plus, UserPlus, Inbox, CheckCircle, XCircle, Clock, Star } from 'lucide-react';
+import { Users, Server, Cpu, LogOut, CloudRain, Activity, Edit2, Trash2, Plus, UserPlus, Inbox, CheckCircle, XCircle, Clock, Star, Search } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer, PieChart, Pie, Cell, Radar, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, Legend } from 'recharts';
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer, PieChart, Pie, Cell, Radar, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, Legend, AreaChart, Area } from 'recharts';
 import EditQuotaModal from '../components/EditQuotaModal';
 import CreateTenantModal from '../components/CreateTenantModal';
 import AssignUserModal from '../components/AssignUserModal';
@@ -15,11 +15,14 @@ export default function AdminDashboard() {
     const [users, setUsers] = useState([]);
     const [requests, setRequests] = useState([]);
     const [clusterStats, setClusterStats] = useState(null);
+    const [clusterTimeline, setClusterTimeline] = useState([]);
+    const [heatmapData, setHeatmapData] = useState({});
     const [loading, setLoading] = useState(true);
     const [activeTab, setActiveTab] = useState('overview');
     const [editingTenant, setEditingTenant] = useState(null);
     const [showCreateTenant, setShowCreateTenant] = useState(false);
     const [assigningUser, setAssigningUser] = useState(null);
+    const [tenantSearches, setTenantSearches] = useState({});
 
     const fetchData = async () => {
         try {
@@ -42,9 +45,36 @@ export default function AdminDashboard() {
 
     useEffect(() => {
         fetchData();
+        api.get('/admin/activity/heatmap').then(res => setHeatmapData(res.data || {})).catch(() => { });
         const interval = setInterval(fetchData, 10000);
         return () => clearInterval(interval);
     }, []);
+
+    // Cluster timeline polling
+    useEffect(() => {
+        if (activeTab !== 'overview') return;
+        const poll = async () => {
+            try {
+                const res = await api.get('/admin/cluster/history');
+                const d = res.data;
+                const point = {
+                    time: new Date(d.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
+                    cpu: d.total_cpu_percent,
+                    ram: d.total_ram_mb,
+                    nodeCpu: d.node_cpu,
+                    nodeRam: d.node_ram_percent
+                };
+                setClusterTimeline(prev => {
+                    const next = [...prev, point];
+                    if (next.length > 60) next.shift();
+                    return next;
+                });
+            } catch (e) { }
+        };
+        poll();
+        const iv = setInterval(poll, 5000);
+        return () => clearInterval(iv);
+    }, [activeTab]);
 
     const handleLogout = () => {
         logout();
@@ -306,6 +336,88 @@ export default function AdminDashboard() {
                                 ) : (
                                     <span className="text-gray-400 text-sm">No instances deployed in the cluster</span>
                                 )}
+                            </div>
+                        </div>
+
+                        {/* Cluster Resource Timeline */}
+                        <div className="apple-card p-6 shadow-sm mb-8 mt-8">
+                            <h3 className="text-lg font-semibold text-gray-900 mb-1">Cluster Load Timeline</h3>
+                            <p className="text-xs text-gray-500 mb-6">Real-time aggregate resource usage (updates every 5s)</p>
+                            <div className="h-72">
+                                {clusterTimeline.length > 1 ? (
+                                    <ResponsiveContainer width="100%" height="100%">
+                                        <AreaChart data={clusterTimeline} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                                            <defs>
+                                                <linearGradient id="clCpu" x1="0" y1="0" x2="0" y2="1">
+                                                    <stop offset="5%" stopColor="#6366f1" stopOpacity={0.3} />
+                                                    <stop offset="95%" stopColor="#6366f1" stopOpacity={0} />
+                                                </linearGradient>
+                                                <linearGradient id="clRam" x1="0" y1="0" x2="0" y2="1">
+                                                    <stop offset="5%" stopColor="#a855f7" stopOpacity={0.3} />
+                                                    <stop offset="95%" stopColor="#a855f7" stopOpacity={0} />
+                                                </linearGradient>
+                                            </defs>
+                                            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f3f4f6" />
+                                            <XAxis dataKey="time" stroke="#9ca3af" fontSize={11} tickLine={false} axisLine={false} minTickGap={30} />
+                                            <YAxis stroke="#9ca3af" fontSize={11} tickLine={false} axisLine={false} />
+                                            <RechartsTooltip contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0/0.1)' }} />
+                                            <Legend iconType="circle" />
+                                            <Area type="monotone" dataKey="nodeCpu" name="Node CPU %" stroke="#6366f1" strokeWidth={2} fillOpacity={1} fill="url(#clCpu)" isAnimationActive={false} />
+                                            <Area type="monotone" dataKey="nodeRam" name="Node RAM %" stroke="#a855f7" strokeWidth={2} fillOpacity={1} fill="url(#clRam)" isAnimationActive={false} />
+                                        </AreaChart>
+                                    </ResponsiveContainer>
+                                ) : (
+                                    <div className="h-full flex items-center justify-center text-gray-400 text-sm">Collecting data...</div>
+                                )}
+                            </div>
+                        </div>
+
+                        {/* GitHub-style Heatmap */}
+                        <div className="apple-card p-6 shadow-sm">
+                            <h3 className="text-lg font-semibold text-gray-900 mb-1">VM Launch Activity</h3>
+                            <p className="text-xs text-gray-500 mb-6">Instance creation frequency over the past year</p>
+                            <div className="overflow-x-auto pb-2">
+                                <svg width={Math.ceil(365 / 7) * 15 + 30} height={7 * 15 + 20} className="mx-auto">
+                                    {(() => {
+                                        const cells = [];
+                                        const today = new Date();
+                                        const dayLabels = ['', 'Mon', '', 'Wed', '', 'Fri', ''];
+                                        dayLabels.forEach((label, i) => {
+                                            if (label) cells.push(<text key={`dl-${i}`} x={0} y={i * 15 + 12} fontSize={10} fill="#9ca3af">{label}</text>);
+                                        });
+                                        for (let i = 364; i >= 0; i--) {
+                                            const d = new Date(today);
+                                            d.setDate(d.getDate() - i);
+                                            const dateStr = d.toISOString().split('T')[0];
+                                            const count = heatmapData[dateStr] || 0;
+                                            const weekIdx = Math.floor((364 - i) / 7);
+                                            const dayIdx = (364 - i) % 7;
+                                            const color = count === 0 ? '#f3f4f6' : count <= 1 ? '#bbf7d0' : count <= 3 ? '#4ade80' : '#16a34a';
+                                            cells.push(
+                                                <rect
+                                                    key={dateStr}
+                                                    x={weekIdx * 15 + 30}
+                                                    y={dayIdx * 15}
+                                                    width={12}
+                                                    height={12}
+                                                    rx={3}
+                                                    fill={color}
+                                                    className="transition-colors"
+                                                >
+                                                    <title>{dateStr}: {count} VM{count !== 1 ? 's' : ''} launched</title>
+                                                </rect>
+                                            );
+                                        }
+                                        return cells;
+                                    })()}
+                                </svg>
+                                <div className="flex items-center justify-end gap-1 mt-2 text-xs text-gray-500">
+                                    <span>Less</span>
+                                    {['#f3f4f6', '#bbf7d0', '#4ade80', '#16a34a'].map((c, i) => (
+                                        <div key={i} className="w-3 h-3 rounded-sm" style={{ backgroundColor: c }} />
+                                    ))}
+                                    <span>More</span>
+                                </div>
                             </div>
                         </div>
                     </>
@@ -586,26 +698,41 @@ export default function AdminDashboard() {
 
                                             {req.status === 'PENDING' && (
                                                 <div className="flex items-center gap-2 md:flex-shrink-0">
-                                                    {/* Approve with tenant selector */}
-                                                    <div className="flex items-center gap-2 bg-white rounded-2xl p-1.5 border border-gray-200 shadow-sm">
-                                                        <select
-                                                            id={`tenant-select-${req.id}`}
-                                                            className="text-xs border-0 bg-transparent pr-6 pl-2 py-1.5 text-gray-700 focus:outline-none"
-                                                            defaultValue={tenants[0]?.id || ''}
-                                                        >
-                                                            {tenants.map(t => (
-                                                                <option key={t.id} value={t.id}>{t.name}</option>
-                                                            ))}
-                                                        </select>
-                                                        <button
-                                                            onClick={() => {
-                                                                const sel = document.getElementById(`tenant-select-${req.id}`);
-                                                                handleResolveRequest(req.id, 'approve', sel?.value);
-                                                            }}
-                                                            className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-green-600 text-white rounded-xl text-xs font-medium hover:bg-green-700 transition-colors"
-                                                        >
-                                                            <CheckCircle size={13} /> Approve
-                                                        </button>
+                                                    {/* Approve with searchable tenant selector */}
+                                                    <div className="flex items-center gap-2 bg-white rounded-2xl p-1.5 border border-gray-200 shadow-sm relative">
+                                                        <div className="relative">
+                                                            <div className="flex items-center gap-1 border border-gray-200 rounded-lg px-2 py-1">
+                                                                <Search size={12} className="text-gray-400" />
+                                                                <input
+                                                                    type="text"
+                                                                    placeholder="Search tenant..."
+                                                                    value={tenantSearches[req.id] || ''}
+                                                                    onChange={(e) => setTenantSearches(prev => ({ ...prev, [req.id]: e.target.value }))}
+                                                                    className="text-xs border-0 bg-transparent w-28 py-0.5 text-gray-700 focus:outline-none placeholder-gray-400"
+                                                                />
+                                                            </div>
+                                                            {(tenantSearches[req.id] !== undefined) && (
+                                                                <div className="absolute top-full left-0 mt-1 w-48 bg-white rounded-xl shadow-lg border border-gray-100 z-20 max-h-40 overflow-y-auto">
+                                                                    {tenants
+                                                                        .filter(t => t.name.toLowerCase().includes((tenantSearches[req.id] || '').toLowerCase()))
+                                                                        .map(t => (
+                                                                            <button
+                                                                                key={t.id}
+                                                                                onClick={() => {
+                                                                                    handleResolveRequest(req.id, 'approve', t.id);
+                                                                                    setTenantSearches(prev => ({ ...prev, [req.id]: undefined }));
+                                                                                }}
+                                                                                className="w-full text-left px-3 py-2 text-xs hover:bg-indigo-50 text-gray-700 transition-colors first:rounded-t-xl last:rounded-b-xl"
+                                                                            >
+                                                                                {t.name}
+                                                                            </button>
+                                                                        ))}
+                                                                    {tenants.filter(t => t.name.toLowerCase().includes((tenantSearches[req.id] || '').toLowerCase())).length === 0 && (
+                                                                        <div className="px-3 py-2 text-xs text-gray-400 italic">No tenants found</div>
+                                                                    )}
+                                                                </div>
+                                                            )}
+                                                        </div>
                                                     </div>
                                                     <button
                                                         onClick={() => handleResolveRequest(req.id, 'reject')}

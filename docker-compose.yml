@@ -41,6 +41,8 @@ services:
       - ./compute-node:/app
       - ./proto:/proto
       - /var/run/docker.sock:/var/run/docker.sock
+      - /proc:/host/proc:ro
+      - /:/host/rootfs:ro
     ports:
       - "50051:50051"
 

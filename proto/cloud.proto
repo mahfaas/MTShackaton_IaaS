@@ -18,6 +18,31 @@ service ComputeService {
 
   // Запрос статистики всей ноды (Cluster metrics)
   rpc GetNodeStats (NodeStatsRequest) returns (NodeStatsResponse) {}
+
+  // Snapshot management
+  rpc CreateSnapshot (CreateSnapshotRequest) returns (SnapshotResponse) {}
+  rpc RestoreSnapshot (RestoreSnapshotRequest) returns (SnapshotResponse) {}
+}
+
+message CreateSnapshotRequest {
+  string instance_id = 1;
+  string snapshot_name = 2;
+}
+
+message RestoreSnapshotRequest {
+  string instance_id = 1;
+  string snapshot_image = 2; // Docker image tag of the snapshot
+  string tenant_id = 3;
+  int32 vcpu = 4;
+  int32 ram_mb = 5;
+}
+
+message SnapshotResponse {
+  bool success = 1;
+  string message = 2;
+  string snapshot_image = 3; // image name for restoring later
+  int64 size_bytes = 4;
+  string ip_address = 5;
 }
 
 message CreateInstanceRequest {

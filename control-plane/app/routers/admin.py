@@ -88,6 +88,86 @@ async def get_cluster_stats(
         "node_health": node_stats
     }
 
+@router.get("/cluster/history")
+async def get_cluster_history(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Returns a single time-series data point of current aggregate cluster load.
+    Frontend polls this every 5s and accumulates client-side."""
+    require_admin(current_user)
+    
+    from app.grpc_client import get_node_stats_via_grpc, get_container_stats_via_grpc
+    
+    # Get all running instances
+    running_q = select(Instance).where(Instance.status == "RUNNING")
+    result = await db.execute(running_q)
+    running_instances = result.scalars().all()
+    
+    total_cpu = 0.0
+    total_ram = 0.0
+    total_net_rx = 0.0
+    total_net_tx = 0.0
+    
+    for inst in running_instances:
+        try:
+            stats = await get_container_stats_via_grpc(str(inst.id))
+            if stats.get("success"):
+                total_cpu += stats.get("cpu_usage_percent", 0)
+                total_ram += stats.get("ram_usage_mb", 0)
+                total_net_rx += stats.get("network_rx_bytes", 0)
+                total_net_tx += stats.get("network_tx_bytes", 0)
+        except:
+            pass
+    
+    node_stats = await get_node_stats_via_grpc()
+    
+    from datetime import datetime
+    return {
+        "timestamp": datetime.utcnow().isoformat(),
+        "total_cpu_percent": round(total_cpu, 2),
+        "total_ram_mb": round(total_ram, 2),
+        "total_net_rx_kb": round(total_net_rx / 1024, 2),
+        "total_net_tx_kb": round(total_net_tx / 1024, 2),
+        "node_cpu": round(node_stats.get("cpu_usage_percent", 0), 2),
+        "node_ram_percent": round(
+            (node_stats.get("ram_usage_mb", 0) / max(node_stats.get("ram_total_mb", 1), 1)) * 100, 2
+        ),
+        "containers_running": node_stats.get("containers_running", 0)
+    }
+
+@router.get("/activity/heatmap")
+async def get_activity_heatmap(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Returns VM launch counts per day for the past 365 days (GitHub-style heatmap)."""
+    require_admin(current_user)
+    
+    from sqlalchemy import func, cast, Date
+    from datetime import datetime, timedelta
+    
+    start_date = datetime.utcnow() - timedelta(days=365)
+    
+    query = (
+        select(
+            cast(Instance.created_at, Date).label("date"),
+            func.count(Instance.id).label("count")
+        )
+        .where(Instance.created_at >= start_date)
+        .group_by(cast(Instance.created_at, Date))
+        .order_by(cast(Instance.created_at, Date))
+    )
+    
+    result = await db.execute(query)
+    rows = result.all()
+    
+    heatmap = {}
+    for row in rows:
+        heatmap[row.date.isoformat()] = row.count
+    
+    return heatmap
+
 # ==========================================
 #  TENANTS
 # ==========================================
