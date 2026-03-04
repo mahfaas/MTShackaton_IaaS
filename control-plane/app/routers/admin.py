@@ -264,6 +264,31 @@ async def remove_member_from_tenant(
     await db.commit()
     return {"message": "Member removed from tenant"}
 
+@router.put("/tenants/{tenant_id}/members/{user_id}/set-owner")
+async def set_tenant_owner(
+    tenant_id: str,
+    user_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    require_admin(current_user)
+    
+    member = (await db.execute(
+        select(TenantMember).where(
+            TenantMember.user_id == user_id,
+            TenantMember.tenant_id == tenant_id
+        )
+    )).scalar_one_or_none()
+    
+    if not member:
+        raise HTTPException(status_code=404, detail="Member not found in this tenant")
+    
+    member.is_owner = not member.is_owner
+    await db.commit()
+    
+    role = "Owner" if member.is_owner else "Member"
+    return {"message": f"User role updated to {role} successfully"}
+
 # ==========================================
 #  USERS
 # ==========================================

@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { api } from '../lib/api';
-import { Users, Server, Cpu, LogOut, CloudRain, Activity, Edit2, Trash2, Plus, UserPlus, Inbox, CheckCircle, XCircle, Clock, UserMinus } from 'lucide-react';
+import { Users, Server, Cpu, LogOut, CloudRain, Activity, Edit2, Trash2, Plus, UserPlus, Inbox, CheckCircle, XCircle, Clock, UserMinus, Star } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
 import EditQuotaModal from '../components/EditQuotaModal';
@@ -65,6 +65,15 @@ export default function AdminDashboard() {
             fetchData();
         } catch (err) {
             alert("Failed: " + (err.response?.data?.detail || err.message));
+        }
+    };
+
+    const handleToggleOwner = async (tenantId, userId) => {
+        try {
+            await api.put(`/admin/tenants/${tenantId}/members/${userId}/set-owner`);
+            fetchData();
+        } catch (err) {
+            alert("Failed to update role: " + (err.response?.data?.detail || err.message));
         }
     };
 
@@ -252,7 +261,13 @@ export default function AdminDashboard() {
                                                     <span key={m.user_id} className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white rounded-full text-xs font-medium text-gray-700 border border-gray-200 shadow-sm">
                                                         <Users size={12} className="text-gray-400" />
                                                         {m.email}
-                                                        {m.is_owner && <span className="text-amber-500 text-[10px]">owner</span>}
+                                                        <button
+                                                            onClick={() => handleToggleOwner(tenant.id, m.user_id)}
+                                                            className={`transition-colors p-0.5 rounded ${m.is_owner ? 'text-amber-500 hover:bg-amber-50' : 'text-gray-300 hover:text-amber-500 hover:bg-gray-50'}`}
+                                                            title={m.is_owner ? "Remove owner status" : "Make owner"}
+                                                        >
+                                                            <Star size={12} className={m.is_owner ? "fill-amber-500" : ""} />
+                                                        </button>
                                                         <button
                                                             onClick={() => handleRemoveMember(tenant.id, m.user_id, m.email)}
                                                             className="text-gray-300 hover:text-red-500 transition-colors ml-1"
@@ -402,14 +417,14 @@ export default function AdminDashboard() {
                             ) : (
                                 requests.map(req => (
                                     <div key={req.id} className={`apple-card p-5 border ${req.status === 'PENDING' ? 'border-amber-200 bg-amber-50/30' :
-                                            req.status === 'APPROVED' ? 'border-green-200 bg-green-50/20' :
-                                                'border-red-200 bg-red-50/20'
+                                        req.status === 'APPROVED' ? 'border-green-200 bg-green-50/20' :
+                                            'border-red-200 bg-red-50/20'
                                         }`}>
                                         <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
                                             <div className="flex items-start gap-3">
                                                 <div className={`w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 ${req.status === 'PENDING' ? 'bg-amber-100 text-amber-600' :
-                                                        req.status === 'APPROVED' ? 'bg-green-100 text-green-600' :
-                                                            'bg-red-100 text-red-600'
+                                                    req.status === 'APPROVED' ? 'bg-green-100 text-green-600' :
+                                                        'bg-red-100 text-red-600'
                                                     }`}>
                                                     {req.status === 'PENDING' ? <Clock size={18} /> :
                                                         req.status === 'APPROVED' ? <CheckCircle size={18} /> :

@@ -66,6 +66,7 @@ class Instance(Base):
     __tablename__ = "instances"
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     tenant_id = Column(UUID(as_uuid=True), ForeignKey("tenants.id"))
+    created_by_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True) # owner of the instance
     name = Column(String, nullable=False)
     vcpu = Column(Integer, nullable=False)
     ram_mb = Column(Integer, nullable=False)
@@ -76,6 +77,7 @@ class Instance(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
 
     tenant = relationship("Tenant", back_populates="instances")
+    creator = relationship("User")
 
 class TenantRequest(Base):
     __tablename__ = "tenant_requests"

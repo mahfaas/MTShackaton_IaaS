@@ -54,7 +54,7 @@ async def provision_worker(instance_id: str, tenant_id: str, vcpu: int, ram_mb: 
                 await db.commit()
             print(f"Background worker failed: {e}")
 
-async def create_instance_service(db: AsyncSession, tenant_id: str, name: str, vcpu: int, ram_mb: int, image: str, tags: str = ""):
+async def create_instance_service(db: AsyncSession, tenant_id: str, created_by_id: str, name: str, vcpu: int, ram_mb: int, image: str, tags: str = ""):
     """Business logic combining quota calculation and DB persistence."""
     # 1. Row-level Lock for Transaction (SELECT ... FOR UPDATE) to fix Race Condition
     query = select(Quota).where(Quota.tenant_id == tenant_id).with_for_update()
@@ -69,7 +69,10 @@ async def create_instance_service(db: AsyncSession, tenant_id: str, name: str, v
         func.sum(Instance.vcpu).label("used_vcpu"),
         func.sum(Instance.ram_mb).label("used_ram"),
         func.count(Instance.id).label("used_instances")
-    ).where(Instance.tenant_id == tenant_id, Instance.status != InstanceStatus.FAILED)
+    ).where(
+        Instance.tenant_id == tenant_id, 
+        Instance.status.notin_([InstanceStatus.FAILED, InstanceStatus.STOPPED])
+    )
     
     usage_result = await db.execute(usage_query)
     usage = usage_result.one()
@@ -88,6 +91,7 @@ async def create_instance_service(db: AsyncSession, tenant_id: str, name: str, v
     # Резервируем ресурсы (State: PROVISIONING)
     new_instance = Instance(
         tenant_id=tenant_id,
+        created_by_id=created_by_id,
         name=name,
         vcpu=vcpu,
         ram_mb=ram_mb,
@@ -140,7 +144,10 @@ async def get_tenant_quotas_usage(db: AsyncSession, tenant_id: str) -> dict:
         func.sum(Instance.vcpu).label("used_vcpu"),
         func.sum(Instance.ram_mb).label("used_ram"),
         func.count(Instance.id).label("used_instances")
-    ).where(Instance.tenant_id == tenant_id, Instance.status != InstanceStatus.FAILED)
+    ).where(
+        Instance.tenant_id == tenant_id, 
+        Instance.status.notin_([InstanceStatus.FAILED, InstanceStatus.STOPPED])
+    )
     
     usage_result = await db.execute(usage_query)
     usage = usage_result.one()
@@ -153,3 +160,48 @@ async def get_tenant_quotas_usage(db: AsyncSession, tenant_id: str) -> dict:
         "used_ram": usage.used_ram or 0,
         "used_instances": usage.used_instances or 0
     }
+
+async def stop_worker(instance_id: str):
+    """Background task to stop an instance via Docker API."""
+    from app.routers.terminal import docker_api
+    async with AsyncSessionLocal() as db:
+        try:
+            loop = asyncio.get_event_loop()
+            # docker stop timeout is 10s by default
+            status, _ = await loop.run_in_executor(
+                None, docker_api, "POST", f"/containers/iaas-vm-{instance_id}/stop"
+            )
+            query = select(Instance).where(Instance.id == instance_id)
+            result = await db.execute(query)
+            instance = result.scalar_one_or_none()
+            if instance:
+                if status in (204, 304):
+                    instance.status = InstanceStatus.STOPPED
+                else:
+                    instance.status = InstanceStatus.FAILED
+                db.add(instance)
+                await db.commit()
+        except Exception as e:
+            print(f"Background stop worker failed: {e}")
+
+async def start_worker(instance_id: str):
+    """Background task to start an instance via Docker API."""
+    from app.routers.terminal import docker_api
+    async with AsyncSessionLocal() as db:
+        try:
+            loop = asyncio.get_event_loop()
+            status, _ = await loop.run_in_executor(
+                None, docker_api, "POST", f"/containers/iaas-vm-{instance_id}/start"
+            )
+            query = select(Instance).where(Instance.id == instance_id)
+            result = await db.execute(query)
+            instance = result.scalar_one_or_none()
+            if instance:
+                if status in (204, 304):
+                    instance.status = InstanceStatus.RUNNING
+                else:
+                    instance.status = InstanceStatus.FAILED
+                db.add(instance)
+                await db.commit()
+        except Exception as e:
+            print(f"Background start worker failed: {e}")

@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { api } from '../lib/api';
 import CreateInstanceModal from '../components/CreateInstanceModal';
-import { Activity, Server, Cpu, LogOut, Plus, CloudRain, Clock, Trash2, PieChart, TerminalSquare, Send, CheckCircle, XCircle, AlertCircle } from 'lucide-react';
+import { Activity, Server, Cpu, LogOut, Plus, CloudRain, Clock, Trash2, PieChart, TerminalSquare, Send, CheckCircle, XCircle, AlertCircle, Play, Square } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
 import TerminalModal from '../components/TerminalModal';
@@ -78,6 +78,24 @@ export default function Dashboard() {
             ));
         } catch (err) {
             alert("Failed to delete instance: " + (err.response?.data?.detail || err.message));
+        }
+    };
+
+    const handleStart = async (instanceId) => {
+        try {
+            await api.post(`/instances/${instanceId}/start`);
+            fetchData();
+        } catch (err) {
+            alert("Failed to start instance: " + (err.response?.data?.detail || err.message));
+        }
+    };
+
+    const handleStop = async (instanceId) => {
+        try {
+            await api.post(`/instances/${instanceId}/stop`);
+            fetchData();
+        } catch (err) {
+            alert("Failed to stop instance: " + (err.response?.data?.detail || err.message));
         }
     };
 
@@ -352,10 +370,11 @@ export default function Dashboard() {
                                             <td className="px-6 py-5 font-medium text-gray-900">{inst.name}</td>
                                             <td className="px-6 py-5">
                                                 <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium ${inst.status === 'RUNNING' ? 'bg-green-50 text-green-700 border border-green-200/50' :
-                                                    ['PROVISIONING', 'DELETING'].includes(inst.status) ? 'bg-amber-50 text-amber-700 border border-amber-200/50 animate-pulse' :
-                                                        'bg-red-50 text-red-700 border border-red-200/50'
+                                                    inst.status === 'STOPPED' ? 'bg-gray-100 text-gray-700 border border-gray-200/50' :
+                                                        ['PROVISIONING', 'DELETING'].includes(inst.status) ? 'bg-amber-50 text-amber-700 border border-amber-200/50 animate-pulse' :
+                                                            'bg-red-50 text-red-700 border border-red-200/50'
                                                     }`}>
-                                                    <div className={`w-1.5 h-1.5 rounded-full ${inst.status === 'RUNNING' ? 'bg-green-500' : ['PROVISIONING', 'DELETING'].includes(inst.status) ? 'bg-amber-500' : 'bg-red-500'}`} />
+                                                    <div className={`w-1.5 h-1.5 rounded-full ${inst.status === 'RUNNING' ? 'bg-green-500' : inst.status === 'STOPPED' ? 'bg-gray-400' : ['PROVISIONING', 'DELETING'].includes(inst.status) ? 'bg-amber-500' : 'bg-red-500'}`} />
                                                     {inst.status}
                                                 </span>
                                             </td>
@@ -394,6 +413,24 @@ export default function Dashboard() {
                                             </td>
                                             <td className="px-6 py-5 text-right">
                                                 <div className="flex items-center justify-end gap-1">
+                                                    {inst.status === 'STOPPED' && (
+                                                        <button
+                                                            onClick={() => handleStart(inst.id)}
+                                                            className="p-2 text-gray-400 hover:text-green-600 hover:bg-green-50 rounded-lg transition-colors"
+                                                            title="Start Instance"
+                                                        >
+                                                            <Play size={16} />
+                                                        </button>
+                                                    )}
+                                                    {inst.status === 'RUNNING' && (
+                                                        <button
+                                                            onClick={() => handleStop(inst.id)}
+                                                            className="p-2 text-gray-400 hover:text-amber-600 hover:bg-amber-50 rounded-lg transition-colors"
+                                                            title="Stop Instance"
+                                                        >
+                                                            <Square size={16} />
+                                                        </button>
+                                                    )}
                                                     {inst.status === 'RUNNING' && (
                                                         <button
                                                             onClick={() => setTerminalInstance(inst)}

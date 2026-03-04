@@ -23,6 +23,7 @@ class InstanceCreateRequest(InstanceBase):
 class InstanceResponse(InstanceBase):
     id: UUID
     tenant_id: UUID
+    created_by_id: Optional[UUID] = None
     status: str
     tags: str
     ip_address: Optional[str] = None

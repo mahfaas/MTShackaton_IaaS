@@ -32,6 +32,7 @@ async def create_instance(
     service_result = await create_instance_service(
         db=db, 
         tenant_id=str(req.tenant_id),
+        created_by_id=str(current_user.id),
         name=req.name,
         vcpu=req.vcpu,
         ram_mb=req.ram_mb,
@@ -57,6 +58,7 @@ async def create_instance(
     return {
         "id": instance.id,
         "tenant_id": instance.tenant_id,
+        "created_by_id": instance.created_by_id,
         "name": instance.name,
         "vcpu": instance.vcpu,
         "ram_mb": instance.ram_mb,
@@ -72,14 +74,22 @@ async def list_instances(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
+    from app.models.base import Role
+    
     member_query = select(TenantMember).where(TenantMember.user_id == current_user.id)
     result = await db.execute(member_query)
     member = result.scalars().first()
     
-    if not member:
+    if not member and current_user.role != Role.ADMIN:
         return []
         
-    instances_query = select(Instance).where(Instance.tenant_id == member.tenant_id)
+    instances_query = select(Instance)
+    
+    if member:
+        instances_query = instances_query.where(Instance.tenant_id == member.tenant_id)
+        if not member.is_owner and current_user.role != Role.ADMIN:
+            instances_query = instances_query.where(Instance.created_by_id == current_user.id)
+            
     instances_result = await db.execute(instances_query)
     return instances_result.scalars().all()
 
@@ -139,6 +149,75 @@ async def delete_instance(
         tenant_id=str(instance.tenant_id)
     )
     return {"message": "Instance deletion queued"}
+
+@router.post("/{instance_id}/stop", status_code=202)
+async def stop_instance(
+    instance_id: str,
+    background_tasks: BackgroundTasks,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    from app.models.base import InstanceStatus, Role
+    from app.services.instance import stop_worker
+    
+    member_query = select(TenantMember).where(TenantMember.user_id == current_user.id)
+    member = (await db.execute(member_query)).scalars().first()
+    
+    query = select(Instance).where(Instance.id == instance_id)
+    if member and current_user.role != Role.ADMIN:
+        query = query.where(Instance.tenant_id == member.tenant_id)
+        if not member.is_owner:
+            query = query.where(Instance.created_by_id == current_user.id)
+            
+    instance = (await db.execute(query)).scalar_one_or_none()
+    if not instance:
+        raise HTTPException(status_code=404, detail="Instance not found or access denied")
+        
+    if instance.status != InstanceStatus.RUNNING:
+        raise HTTPException(status_code=400, detail=f"Cannot stop instance in state {instance.status.value}")
+        
+    background_tasks.add_task(stop_worker, instance_id=str(instance.id))
+    return {"message": "Instance stop queued"}
+
+@router.post("/{instance_id}/start", status_code=202)
+async def start_instance(
+    instance_id: str,
+    background_tasks: BackgroundTasks,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    from app.models.base import InstanceStatus, Role
+    from app.services.instance import start_worker
+    
+    member_query = select(TenantMember).where(TenantMember.user_id == current_user.id)
+    member = (await db.execute(member_query)).scalars().first()
+    
+    query = select(Instance).where(Instance.id == instance_id)
+    if member and current_user.role != Role.ADMIN:
+        query = query.where(Instance.tenant_id == member.tenant_id)
+        if not member.is_owner:
+            query = query.where(Instance.created_by_id == current_user.id)
+            
+    instance = (await db.execute(query)).scalar_one_or_none()
+    if not instance:
+        raise HTTPException(status_code=404, detail="Instance not found or access denied")
+        
+    if instance.status != InstanceStatus.STOPPED:
+        raise HTTPException(status_code=400, detail=f"Cannot start instance in state {instance.status.value}")
+        
+    # Check quotas before starting
+    from app.services.instance import get_tenant_quotas_usage
+    usage = await get_tenant_quotas_usage(db, str(instance.tenant_id))
+    
+    if usage["used_instances"] + 1 > usage["max_instances"]:
+         raise HTTPException(status_code=400, detail="Instance count quota exceeded")
+    if usage["used_vcpu"] + instance.vcpu > usage["max_vcpu"]:
+         raise HTTPException(status_code=400, detail="vCPU quota exceeded")
+    if usage["used_ram"] + instance.ram_mb > usage["max_ram_mb"]:
+         raise HTTPException(status_code=400, detail="RAM quota exceeded")
+         
+    background_tasks.add_task(start_worker, instance_id=str(instance.id))
+    return {"message": "Instance start queued"}
 
 # ==========================================
 #  TENANT ACCESS REQUESTS (User-facing)
