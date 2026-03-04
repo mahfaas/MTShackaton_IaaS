@@ -13,7 +13,7 @@ _sym_db = _symbol_database.Default()
 
 
 
-DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x0b\x63loud.proto\x12\x05\x63loud\"l\n\x15\x43reateInstanceRequest\x12\x13\n\x0binstance_id\x18\x01 \x01(\t\x12\x0c\n\x04vcpu\x18\x02 \x01(\x05\x12\x0e\n\x06ram_mb\x18\x03 \x01(\x05\x12\r\n\x05image\x18\x04 \x01(\t\x12\x11\n\ttenant_id\x18\x05 \x01(\t\"?\n\x15\x44\x65leteInstanceRequest\x12\x13\n\x0binstance_id\x18\x01 \x01(\t\x12\x11\n\ttenant_id\x18\x02 \x01(\t\"H\n\x10InstanceResponse\x12\x0f\n\x07success\x18\x01 \x01(\x08\x12\x0f\n\x07message\x18\x02 \x01(\t\x12\x12\n\nip_address\x18\x03 \x01(\t2\xa6\x01\n\x0e\x43omputeService\x12I\n\x0e\x43reateInstance\x12\x1c.cloud.CreateInstanceRequest\x1a\x17.cloud.InstanceResponse\"\x00\x12I\n\x0e\x44\x65leteInstance\x12\x1c.cloud.DeleteInstanceRequest\x1a\x17.cloud.InstanceResponse\"\x00\x42\x08Z\x06/cloudb\x06proto3')
+DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x0b\x63loud.proto\x12\x05\x63loud\"l\n\x15\x43reateInstanceRequest\x12\x13\n\x0binstance_id\x18\x01 \x01(\t\x12\x0c\n\x04vcpu\x18\x02 \x01(\x05\x12\x0e\n\x06ram_mb\x18\x03 \x01(\x05\x12\r\n\x05image\x18\x04 \x01(\t\x12\x11\n\ttenant_id\x18\x05 \x01(\t\"?\n\x15\x44\x65leteInstanceRequest\x12\x13\n\x0binstance_id\x18\x01 \x01(\t\x12\x11\n\ttenant_id\x18\x02 \x01(\t\"H\n\x10InstanceResponse\x12\x0f\n\x07success\x18\x01 \x01(\x08\x12\x0f\n\x07message\x18\x02 \x01(\t\x12\x12\n\nip_address\x18\x03 \x01(\t\",\n\x15\x43ontainerStatsRequest\x12\x13\n\x0binstance_id\x18\x01 \x01(\t\"\x93\x01\n\x16\x43ontainerStatsResponse\x12\x19\n\x11\x63pu_usage_percent\x18\x01 \x01(\x01\x12\x14\n\x0cram_usage_mb\x18\x02 \x01(\x01\x12\x14\n\x0cram_limit_mb\x18\x03 \x01(\x01\x12\x18\n\x10network_rx_bytes\x18\x04 \x01(\x01\x12\x18\n\x10network_tx_bytes\x18\x05 \x01(\x01\"\x12\n\x10NodeStatsRequest\"\x92\x01\n\x11NodeStatsResponse\x12\x19\n\x11\x63pu_usage_percent\x18\x01 \x01(\x01\x12\x14\n\x0cram_usage_mb\x18\x02 \x01(\x01\x12\x14\n\x0cram_total_mb\x18\x03 \x01(\x01\x12\x1a\n\x12\x64isk_usage_percent\x18\x04 \x01(\x01\x12\x1a\n\x12\x63ontainers_running\x18\x05 \x01(\x05\x32\xbf\x02\n\x0e\x43omputeService\x12I\n\x0e\x43reateInstance\x12\x1c.cloud.CreateInstanceRequest\x1a\x17.cloud.InstanceResponse\"\x00\x12I\n\x0e\x44\x65leteInstance\x12\x1c.cloud.DeleteInstanceRequest\x1a\x17.cloud.InstanceResponse\"\x00\x12R\n\x11GetContainerStats\x12\x1c.cloud.ContainerStatsRequest\x1a\x1d.cloud.ContainerStatsResponse\"\x00\x12\x43\n\x0cGetNodeStats\x12\x17.cloud.NodeStatsRequest\x1a\x18.cloud.NodeStatsResponse\"\x00\x42\x08Z\x06/cloudb\x06proto3')
 
 _globals = globals()
 _builder.BuildMessageAndEnumDescriptors(DESCRIPTOR, _globals)
@@ -27,6 +27,14 @@ if _descriptor._USE_C_DESCRIPTORS == False:
   _globals['_DELETEINSTANCEREQUEST']._serialized_end=195
   _globals['_INSTANCERESPONSE']._serialized_start=197
   _globals['_INSTANCERESPONSE']._serialized_end=269
-  _globals['_COMPUTESERVICE']._serialized_start=272
-  _globals['_COMPUTESERVICE']._serialized_end=438
+  _globals['_CONTAINERSTATSREQUEST']._serialized_start=271
+  _globals['_CONTAINERSTATSREQUEST']._serialized_end=315
+  _globals['_CONTAINERSTATSRESPONSE']._serialized_start=318
+  _globals['_CONTAINERSTATSRESPONSE']._serialized_end=465
+  _globals['_NODESTATSREQUEST']._serialized_start=467
+  _globals['_NODESTATSREQUEST']._serialized_end=485
+  _globals['_NODESTATSRESPONSE']._serialized_start=488
+  _globals['_NODESTATSRESPONSE']._serialized_end=634
+  _globals['_COMPUTESERVICE']._serialized_start=637
+  _globals['_COMPUTESERVICE']._serialized_end=956
 # @@protoc_insertion_point(module_scope)

@@ -12,6 +12,12 @@ service ComputeService {
   
   // Запрос на удаление ВМ
   rpc DeleteInstance (DeleteInstanceRequest) returns (InstanceResponse) {}
+
+  // Запрос статистики конкретного контейнера (Continuous monitoring)
+  rpc GetContainerStats (ContainerStatsRequest) returns (ContainerStatsResponse) {}
+
+  // Запрос статистики всей ноды (Cluster metrics)
+  rpc GetNodeStats (NodeStatsRequest) returns (NodeStatsResponse) {}
 }
 
 message CreateInstanceRequest {
@@ -31,4 +37,27 @@ message InstanceResponse {
   bool success = 1;
   string message = 2;       // Описание ошибки, если success = false
   string ip_address = 3;    // Выданный IP адрес (мокаем или берем из docker network)
+}
+
+message ContainerStatsRequest {
+  string instance_id = 1;
+}
+
+message ContainerStatsResponse {
+  double cpu_usage_percent = 1;
+  double ram_usage_mb = 2;
+  double ram_limit_mb = 3;
+  double network_rx_bytes = 4;
+  double network_tx_bytes = 5;
+}
+
+message NodeStatsRequest {
+}
+
+message NodeStatsResponse {
+  double cpu_usage_percent = 1;
+  double ram_usage_mb = 2;
+  double ram_total_mb = 3;
+  double disk_usage_percent = 4;
+  int32 containers_running = 5;
 }

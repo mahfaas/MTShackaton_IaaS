@@ -41,6 +41,54 @@ def require_admin(user: User):
 router = APIRouter(prefix="/admin", tags=["admin"])
 
 # ==========================================
+#  CLUSTER STATS
+# ==========================================
+
+@router.get("/cluster/stats")
+async def get_cluster_stats(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    require_admin(current_user)
+    
+    # 1. Tenant resource distribution
+    query = select(Tenant).options(
+        selectinload(Tenant.instances),
+        selectinload(Tenant.quota)
+    )
+    result = await db.execute(query)
+    tenants = result.scalars().all()
+    
+    tenant_stats = []
+    status_counts = {"RUNNING": 0, "STOPPED": 0, "FAILED": 0, "DELETED": 0, "PROVISIONING": 0, "DELETING": 0}
+    
+    for t in tenants:
+        t_vcpu = 0
+        t_ram = 0
+        for i in t.instances:
+            status_counts[i.status.value] = status_counts.get(i.status.value, 0) + 1
+            if i.status.value not in ("FAILED", "DELETED"):
+                t_vcpu += i.vcpu
+                t_ram += i.ram_mb
+        tenant_stats.append({
+            "tenant_id": t.id,
+            "name": t.name,
+            "used_vcpu": t_vcpu,
+            "used_ram_mb": t_ram,
+            "active_instances": len([i for i in t.instances if i.status.value not in ("FAILED", "DELETED")])
+        })
+        
+    # 2. Node physical stats
+    from app.grpc_client import get_node_stats_via_grpc
+    node_stats = await get_node_stats_via_grpc()
+    
+    return {
+        "tenant_distribution": tenant_stats,
+        "instance_statuses": status_counts,
+        "node_health": node_stats
+    }
+
+# ==========================================
 #  TENANTS
 # ==========================================
 

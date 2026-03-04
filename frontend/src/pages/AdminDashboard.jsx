@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react';
 import { api } from '../lib/api';
-import { Users, Server, Cpu, LogOut, CloudRain, Activity, Edit2, Trash2, Plus, UserPlus, Inbox, CheckCircle, XCircle, Clock, UserMinus, Star } from 'lucide-react';
+import { Users, Server, Cpu, LogOut, CloudRain, Activity, Edit2, Trash2, Plus, UserPlus, Inbox, CheckCircle, XCircle, Clock, Star } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer, PieChart, Pie, Cell, Radar, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, Legend } from 'recharts';
 import EditQuotaModal from '../components/EditQuotaModal';
 import CreateTenantModal from '../components/CreateTenantModal';
 import AssignUserModal from '../components/AssignUserModal';
@@ -13,22 +14,25 @@ export default function AdminDashboard() {
     const [tenants, setTenants] = useState([]);
     const [users, setUsers] = useState([]);
     const [requests, setRequests] = useState([]);
+    const [clusterStats, setClusterStats] = useState(null);
     const [loading, setLoading] = useState(true);
-    const [activeTab, setActiveTab] = useState('tenants');
+    const [activeTab, setActiveTab] = useState('overview');
     const [editingTenant, setEditingTenant] = useState(null);
     const [showCreateTenant, setShowCreateTenant] = useState(false);
     const [assigningUser, setAssigningUser] = useState(null);
 
     const fetchData = async () => {
         try {
-            const [tenantsRes, usersRes, requestsRes] = await Promise.all([
+            const [tenantsRes, usersRes, requestsRes, statsRes] = await Promise.all([
                 api.get('/admin/tenants').catch(() => ({ data: [] })),
                 api.get('/admin/users').catch(() => ({ data: [] })),
                 api.get('/admin/requests').catch(() => ({ data: [] })),
+                api.get('/admin/cluster/stats').catch(() => ({ data: null }))
             ]);
             setTenants(tenantsRes.data);
             setUsers(usersRes.data);
             setRequests(requestsRes.data);
+            setClusterStats(statsRes.data);
         } catch (err) {
             console.error("Failed to load admin data:", err);
         } finally {
@@ -108,6 +112,7 @@ export default function AdminDashboard() {
     );
 
     const navItems = [
+        { key: 'overview', icon: Activity, label: 'Overview' },
         { key: 'tenants', icon: Server, label: 'Tenants' },
         { key: 'users', icon: Users, label: 'Users' },
         { key: 'requests', icon: Inbox, label: 'Requests', badge: pendingRequests.length },
@@ -182,6 +187,130 @@ export default function AdminDashboard() {
 
             {/* Main Content */}
             <div className="flex-1 p-4 md:p-12 overflow-y-auto">
+                {/* ===== OVERVIEW TAB ===== */}
+                {activeTab === 'overview' && (
+                    <>
+                        <div className="mb-8">
+                            <h1 className="text-2xl md:text-3xl font-semibold tracking-tight mb-2">Cluster Overview</h1>
+                            <p className="text-gray-500 text-sm md:text-base">Global infrastructure health and resource distribution</p>
+                        </div>
+
+                        {/* Top Stats Cards */}
+                        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 md:gap-6 mb-8">
+                            <div className="apple-card p-5 border border-blue-100 bg-gradient-to-br from-blue-50/50 to-white">
+                                <div className="text-blue-600/80 mb-2 flex items-center gap-2 text-sm font-medium"><Server size={16} /> Total Tenants</div>
+                                <div className="text-3xl font-bold text-gray-900">{tenants.length}</div>
+                            </div>
+                            <div className="apple-card p-5 border border-indigo-100 bg-gradient-to-br from-indigo-50/50 to-white">
+                                <div className="text-indigo-600/80 mb-2 flex items-center gap-2 text-sm font-medium"><Cpu size={16} /> Allocated vCPU</div>
+                                <div className="text-3xl font-bold text-gray-900">
+                                    {clusterStats?.tenant_distribution?.reduce((acc, t) => acc + t.used_vcpu, 0) || 0}
+                                </div>
+                            </div>
+                            <div className="apple-card p-5 border border-purple-100 bg-gradient-to-br from-purple-50/50 to-white">
+                                <div className="text-purple-600/80 mb-2 flex items-center gap-2 text-sm font-medium"><Activity size={16} /> Allocated RAM</div>
+                                <div className="text-3xl font-bold text-gray-900">
+                                    {((clusterStats?.tenant_distribution?.reduce((acc, t) => acc + t.used_ram_mb, 0) || 0) / 1024).toFixed(1)} <span className="text-lg font-medium text-gray-500">GB</span>
+                                </div>
+                            </div>
+                            <div className="apple-card p-5 border border-emerald-100 bg-gradient-to-br from-emerald-50/50 to-white">
+                                <div className="text-emerald-600/80 mb-2 flex items-center gap-2 text-sm font-medium"><CheckCircle size={16} /> Node Health</div>
+                                <div className="text-3xl font-bold text-gray-900 flex items-baseline gap-2">
+                                    <span>{clusterStats?.node_health ? 'OK' : 'Unknown'}</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-8">
+                            {/* Stacked Bar Chart: Tenant Distribution */}
+                            <div className="apple-card p-6 shadow-sm flex flex-col">
+                                <h3 className="text-lg font-semibold text-gray-900 mb-1">Resource Distribution</h3>
+                                <p className="text-xs text-gray-500 mb-6">vCPU and RAM usage per tenant</p>
+                                <div className="flex-1 min-h-[300px]">
+                                    {clusterStats?.tenant_distribution?.length > 0 ? (
+                                        <ResponsiveContainer width="100%" height="100%">
+                                            <BarChart data={clusterStats.tenant_distribution} margin={{ top: 20, right: 30, left: -20, bottom: 5 }}>
+                                                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f3f4f6" />
+                                                <XAxis dataKey="name" stroke="#9ca3af" fontSize={12} tickLine={false} axisLine={false} />
+                                                <YAxis yAxisId="left" stroke="#9ca3af" fontSize={12} tickLine={false} axisLine={false} />
+                                                <YAxis yAxisId="right" orientation="right" stroke="#9ca3af" fontSize={12} tickLine={false} axisLine={false} />
+                                                <RechartsTooltip cursor={{ fill: '#f3f4f6' }} contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} />
+                                                <Legend iconType="circle" />
+                                                <Bar yAxisId="left" dataKey="used_vcpu" name="vCPU" stackId="a" fill="#6366f1" radius={[0, 0, 4, 4]} />
+                                                <Bar yAxisId="right" dataKey="used_ram_mb" name="RAM (MB)" stackId="b" fill="#a855f7" radius={[4, 4, 0, 0]} />
+                                            </BarChart>
+                                        </ResponsiveContainer>
+                                    ) : (
+                                        <div className="h-full flex items-center justify-center text-gray-400 text-sm">No tenant data available</div>
+                                    )}
+                                </div>
+                            </div>
+
+                            {/* Radar Chart: Node Health (Mocked partly) */}
+                            <div className="apple-card p-6 shadow-sm flex flex-col">
+                                <h3 className="text-lg font-semibold text-gray-900 mb-1">Physical Node Load</h3>
+                                <p className="text-xs text-gray-500 mb-6">System resource utilization (Radar Profile)</p>
+                                <div className="flex-1 min-h-[300px]">
+                                    {clusterStats?.node_health ? (
+                                        <ResponsiveContainer width="100%" height="100%">
+                                            <RadarChart cx="50%" cy="50%" outerRadius="70%" data={[
+                                                { subject: 'CPU', A: clusterStats.node_health.cpu_usage_percent || 0, fullMark: 100 },
+                                                { subject: 'RAM', A: (clusterStats.node_health.ram_usage_mb / clusterStats.node_health.ram_total_mb) * 100 || 0, fullMark: 100 },
+                                                { subject: 'Disk I/O', A: clusterStats.node_health.disk_usage_percent || 0, fullMark: 100 },
+                                                { subject: 'Network', A: 35 /* Mock */, fullMark: 100 },
+                                                { subject: 'Docker', A: clusterStats.node_health.containers_running * 5 || 0, fullMark: 100 },
+                                            ]}>
+                                                <PolarGrid stroke="#e5e7eb" />
+                                                <PolarAngleAxis dataKey="subject" tick={{ fill: '#6b7280', fontSize: 12 }} />
+                                                <PolarRadiusAxis angle={30} domain={[0, 100]} tick={false} axisLine={false} />
+                                                <Radar name="Node 1" dataKey="A" stroke="#8b5cf6" fill="#8b5cf6" fillOpacity={0.4} />
+                                                <RechartsTooltip contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} />
+                                            </RadarChart>
+                                        </ResponsiveContainer>
+                                    ) : (
+                                        <div className="h-full flex items-center justify-center text-gray-400 text-sm">No node health data</div>
+                                    )}
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Pie Chart: Instances Statuses */}
+                        <div className="apple-card p-6 shadow-sm text-center max-w-2xl mx-auto">
+                            <h3 className="text-lg font-semibold text-gray-900 mb-1">Global Instance Status</h3>
+                            <p className="text-xs text-gray-500 mb-6">Proportion of VM states across all tenants</p>
+                            <div className="h-64 flex items-center justify-center">
+                                {clusterStats?.instance_statuses && Object.keys(clusterStats.instance_statuses).length > 0 ? (
+                                    <ResponsiveContainer width="100%" height="100%">
+                                        <PieChart>
+                                            <Pie
+                                                data={Object.entries(clusterStats.instance_statuses).map(([name, value]) => ({ name, value })).filter(d => d.value > 0)}
+                                                cx="50%" cy="50%" innerRadius={60} outerRadius={90} paddingAngle={2} dataKey="value"
+                                            >
+                                                {
+                                                    Object.entries(clusterStats.instance_statuses).filter(([_, v]) => v > 0).map(([name, _], index) => {
+                                                        const colors = {
+                                                            'RUNNING': '#10b981',
+                                                            'STOPPED': '#9ca3af',
+                                                            'FAILED': '#ef4444',
+                                                            'PROVISIONING': '#f59e0b',
+                                                            'DELETING': '#f97316'
+                                                        };
+                                                        return <Cell key={`cell-${index}`} fill={colors[name] || '#3b82f6'} />;
+                                                    })
+                                                }
+                                            </Pie>
+                                            <RechartsTooltip contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} />
+                                            <Legend iconType="circle" />
+                                        </PieChart>
+                                    </ResponsiveContainer>
+                                ) : (
+                                    <span className="text-gray-400 text-sm">No instances deployed in the cluster</span>
+                                )}
+                            </div>
+                        </div>
+                    </>
+                )}
+
                 {/* ===== TENANTS TAB ===== */}
                 {activeTab === 'tenants' && (
                     <>

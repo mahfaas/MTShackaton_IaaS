@@ -41,3 +41,39 @@ async def delete_instance_via_grpc(instance_id: str, tenant_id: str) -> dict:
             return {"success": response.success, "message": response.message}
         except grpc.aio.AioRpcError as e:
             return {"success": False, "message": f"gRPC Error: {e.details()}"}
+
+async def get_container_stats_via_grpc(instance_id: str) -> dict:
+    """Асинхронный вызов Go микросервиса для получения статистики контейнера"""
+    async with grpc.aio.insecure_channel(COMPUTE_NODE_URL) as channel:
+        stub = cloud_pb2_grpc.ComputeServiceStub(channel)
+        request = cloud_pb2.ContainerStatsRequest(instance_id=instance_id)
+        try:
+            response = await stub.GetContainerStats(request, timeout=5.0)
+            return {
+                "success": True,
+                "cpu_usage_percent": response.cpu_usage_percent,
+                "ram_usage_mb": response.ram_usage_mb,
+                "ram_limit_mb": response.ram_limit_mb,
+                "network_rx_bytes": response.network_rx_bytes,
+                "network_tx_bytes": response.network_tx_bytes
+            }
+        except grpc.aio.AioRpcError as e:
+            return {"success": False, "message": f"gRPC Error: {e.details()}"}
+
+async def get_node_stats_via_grpc() -> dict:
+    """Асинхронный вызов Go микросервиса для получения статистики физической ноды"""
+    async with grpc.aio.insecure_channel(COMPUTE_NODE_URL) as channel:
+        stub = cloud_pb2_grpc.ComputeServiceStub(channel)
+        request = cloud_pb2.NodeStatsRequest()
+        try:
+            response = await stub.GetNodeStats(request, timeout=5.0)
+            return {
+                "success": True,
+                "cpu_usage_percent": response.cpu_usage_percent,
+                "ram_usage_mb": response.ram_usage_mb,
+                "ram_total_mb": response.ram_total_mb,
+                "disk_usage_percent": response.disk_usage_percent,
+                "containers_running": response.containers_running
+            }
+        except grpc.aio.AioRpcError as e:
+            return {"success": False, "message": f"gRPC Error: {e.details()}"}

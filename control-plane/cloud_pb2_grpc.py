@@ -25,6 +25,16 @@ class ComputeServiceStub(object):
                 request_serializer=cloud__pb2.DeleteInstanceRequest.SerializeToString,
                 response_deserializer=cloud__pb2.InstanceResponse.FromString,
                 )
+        self.GetContainerStats = channel.unary_unary(
+                '/cloud.ComputeService/GetContainerStats',
+                request_serializer=cloud__pb2.ContainerStatsRequest.SerializeToString,
+                response_deserializer=cloud__pb2.ContainerStatsResponse.FromString,
+                )
+        self.GetNodeStats = channel.unary_unary(
+                '/cloud.ComputeService/GetNodeStats',
+                request_serializer=cloud__pb2.NodeStatsRequest.SerializeToString,
+                response_deserializer=cloud__pb2.NodeStatsResponse.FromString,
+                )
 
 
 class ComputeServiceServicer(object):
@@ -45,6 +55,20 @@ class ComputeServiceServicer(object):
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
+    def GetContainerStats(self, request, context):
+        """Запрос статистики конкретного контейнера (Continuous monitoring)
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def GetNodeStats(self, request, context):
+        """Запрос статистики всей ноды (Cluster metrics)
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
 
 def add_ComputeServiceServicer_to_server(servicer, server):
     rpc_method_handlers = {
@@ -57,6 +81,16 @@ def add_ComputeServiceServicer_to_server(servicer, server):
                     servicer.DeleteInstance,
                     request_deserializer=cloud__pb2.DeleteInstanceRequest.FromString,
                     response_serializer=cloud__pb2.InstanceResponse.SerializeToString,
+            ),
+            'GetContainerStats': grpc.unary_unary_rpc_method_handler(
+                    servicer.GetContainerStats,
+                    request_deserializer=cloud__pb2.ContainerStatsRequest.FromString,
+                    response_serializer=cloud__pb2.ContainerStatsResponse.SerializeToString,
+            ),
+            'GetNodeStats': grpc.unary_unary_rpc_method_handler(
+                    servicer.GetNodeStats,
+                    request_deserializer=cloud__pb2.NodeStatsRequest.FromString,
+                    response_serializer=cloud__pb2.NodeStatsResponse.SerializeToString,
             ),
     }
     generic_handler = grpc.method_handlers_generic_handler(
@@ -100,5 +134,39 @@ class ComputeService(object):
         return grpc.experimental.unary_unary(request, target, '/cloud.ComputeService/DeleteInstance',
             cloud__pb2.DeleteInstanceRequest.SerializeToString,
             cloud__pb2.InstanceResponse.FromString,
+            options, channel_credentials,
+            insecure, call_credentials, compression, wait_for_ready, timeout, metadata)
+
+    @staticmethod
+    def GetContainerStats(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(request, target, '/cloud.ComputeService/GetContainerStats',
+            cloud__pb2.ContainerStatsRequest.SerializeToString,
+            cloud__pb2.ContainerStatsResponse.FromString,
+            options, channel_credentials,
+            insecure, call_credentials, compression, wait_for_ready, timeout, metadata)
+
+    @staticmethod
+    def GetNodeStats(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(request, target, '/cloud.ComputeService/GetNodeStats',
+            cloud__pb2.NodeStatsRequest.SerializeToString,
+            cloud__pb2.NodeStatsResponse.FromString,
             options, channel_credentials,
             insecure, call_credentials, compression, wait_for_ready, timeout, metadata)

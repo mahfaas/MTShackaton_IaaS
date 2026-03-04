@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"log"
@@ -171,6 +172,70 @@ func (s *server) DeleteInstance(ctx context.Context, req *pb.DeleteInstanceReque
 
 	log.Printf("Successfully removed container %s", containerName)
 	return &pb.InstanceResponse{Success: true, Message: "Deleted", IpAddress: ""}, nil
+}
+
+func (s *server) GetContainerStats(ctx context.Context, req *pb.ContainerStatsRequest) (*pb.ContainerStatsResponse, error) {
+	containerName := fmt.Sprintf("iaas-vm-%s", req.InstanceId)
+
+	stats, err := s.dockerCli.ContainerStats(ctx, containerName, false)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get container stats: %v", err)
+	}
+	defer stats.Body.Close()
+
+	var v *container.StatsResponse
+	if err := json.NewDecoder(stats.Body).Decode(&v); err != nil {
+		return nil, fmt.Errorf("failed to decode stats: %v", err)
+	}
+
+	// Calculate CPU Percent
+	cpuPercent := 0.0
+	cpuDelta := float64(v.CPUStats.CPUUsage.TotalUsage - v.PreCPUStats.CPUUsage.TotalUsage)
+	systemDelta := float64(v.CPUStats.SystemUsage - v.PreCPUStats.SystemUsage)
+	if systemDelta > 0.0 && cpuDelta > 0.0 {
+		cpuPercent = (cpuDelta / systemDelta) * float64(len(v.CPUStats.CPUUsage.PercpuUsage)) * 100.0
+	}
+
+	// Calculate RAM
+	ramMB := float64(v.MemoryStats.Usage) / (1024 * 1024)
+	ramLimitMB := float64(v.MemoryStats.Limit) / (1024 * 1024)
+
+	// Calculate Network
+	rxBytes := 0.0
+	txBytes := 0.0
+	for _, net := range v.Networks {
+		rxBytes += float64(net.RxBytes)
+		txBytes += float64(net.TxBytes)
+	}
+
+	return &pb.ContainerStatsResponse{
+		CpuUsagePercent: cpuPercent,
+		RamUsageMb:      ramMB,
+		RamLimitMb:      ramLimitMB,
+		NetworkRxBytes:  rxBytes,
+		NetworkTxBytes:  txBytes,
+	}, nil
+}
+
+func (s *server) GetNodeStats(ctx context.Context, req *pb.NodeStatsRequest) (*pb.NodeStatsResponse, error) {
+	// For node stats, we'll return some dummy physical server stats for now since getting
+	// host-level physical stats inside a container requires significant privileges and volumes.
+	// We will count running containers as real data.
+
+	containers, err := s.dockerCli.ContainerList(ctx, container.ListOptions{})
+	running := 0
+	if err == nil {
+		running = len(containers)
+	}
+
+	// Mock data for physical node:
+	return &pb.NodeStatsResponse{
+		CpuUsagePercent:   32.5,
+		RamUsageMb:        8192.0,
+		RamTotalMb:        32768.0,
+		DiskUsagePercent:  45.2,
+		ContainersRunning: int32(running),
+	}, nil
 }
 
 func main() {

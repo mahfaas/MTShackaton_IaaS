@@ -223,6 +223,37 @@ async def start_instance(
 #  TENANT ACCESS REQUESTS (User-facing)
 # ==========================================
 
+@router.get("/{instance_id}/stats")
+async def get_instance_stats(
+    instance_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    from app.models.base import InstanceStatus, Role
+    from app.grpc_client import get_container_stats_via_grpc
+    
+    member_query = select(TenantMember).where(TenantMember.user_id == current_user.id)
+    member = (await db.execute(member_query)).scalars().first()
+    
+    query = select(Instance).where(Instance.id == instance_id)
+    if member and current_user.role != Role.ADMIN:
+        query = query.where(Instance.tenant_id == member.tenant_id)
+        if not member.is_owner:
+            query = query.where(Instance.created_by_id == current_user.id)
+            
+    instance = (await db.execute(query)).scalar_one_or_none()
+    if not instance:
+        raise HTTPException(status_code=404, detail="Instance not found or access denied")
+        
+    if instance.status != InstanceStatus.RUNNING:
+        raise HTTPException(status_code=400, detail="Cannot fetch stats for non-running instance")
+        
+    stats = await get_container_stats_via_grpc(instance_id)
+    if not stats.get("success"):
+        raise HTTPException(status_code=500, detail="Failed to fetch stats from Compute Node")
+        
+    return stats
+
 from pydantic import BaseModel as PydanticBase
 
 class AccessRequestCreate(PydanticBase):

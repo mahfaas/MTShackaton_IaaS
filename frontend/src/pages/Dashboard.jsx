@@ -5,7 +5,8 @@ import { Activity, Server, Cpu, LogOut, Plus, CloudRain, Clock, Trash2, PieChart
 import { useAuth } from '../contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
 import TerminalModal from '../components/TerminalModal';
-
+import InstanceMonitoringModal from '../components/InstanceMonitoringModal';
+import { PieChart as RechartsPieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 export default function Dashboard() {
     const { user, logout, setUser } = useAuth();
     const navigate = useNavigate();
@@ -15,6 +16,7 @@ export default function Dashboard() {
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [activeTab, setActiveTab] = useState('compute');
     const [terminalInstance, setTerminalInstance] = useState(null);
+    const [monitoringInstance, setMonitoringInstance] = useState(null);
 
     // Request state
     const [requestMessage, setRequestMessage] = useState('');
@@ -440,6 +442,15 @@ export default function Dashboard() {
                                                             <TerminalSquare size={16} />
                                                         </button>
                                                     )}
+                                                    {inst.status === 'RUNNING' && (
+                                                        <button
+                                                            onClick={() => setMonitoringInstance(inst)}
+                                                            className="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                                                            title="Monitoring"
+                                                        >
+                                                            <Activity size={16} />
+                                                        </button>
+                                                    )}
                                                     <button
                                                         onClick={() => handleDelete(inst.id)}
                                                         disabled={inst.status === 'DELETING' || inst.status === 'DELETED'}
@@ -472,65 +483,123 @@ export default function Dashboard() {
                             </div>
                         </div>
 
-                        <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-8 mb-8">
                             {/* Pie Chart: Instances */}
-                            <div className="apple-card p-8 flex flex-col items-center justify-center text-center">
-                                <div className="w-12 h-12 bg-blue-50 text-blue-600 rounded-2xl flex items-center justify-center mb-6">
-                                    <Server size={24} />
+                            <div className="apple-card p-6 flex flex-col items-center justify-center text-center shadow-sm">
+                                <div className="w-10 h-10 bg-blue-50 text-blue-600 rounded-xl flex items-center justify-center mb-4">
+                                    <Server size={20} />
                                 </div>
                                 <h3 className="text-lg font-semibold mb-1">Instances</h3>
-                                <p className="text-gray-500 text-sm mb-6">Virtual machines running</p>
-                                <div
-                                    className="w-40 h-40 rounded-full flex items-center justify-center mb-6 shadow-sm border border-gray-100 relative"
-                                    style={{
-                                        background: `conic-gradient(#3b82f6 ${Math.min(((quotas?.used_instances || 0) / (quotas?.max_instances || 1)) * 100, 100)}%, #f3f4f6 0)`
-                                    }}
-                                >
-                                    <div className="w-32 h-32 bg-white rounded-full flex items-center justify-center flex-col shadow-inner">
-                                        <span className="text-2xl font-bold text-gray-900">{quotas?.used_instances || 0}</span>
-                                        <span className="text-xs text-gray-500 font-medium">/ {quotas?.max_instances || 0}</span>
-                                    </div>
+                                <p className="text-gray-500 text-sm mb-4">Virtual machines running</p>
+                                <div className="h-48 w-full">
+                                    <ResponsiveContainer width="100%" height="100%">
+                                        <RechartsPieChart>
+                                            <Pie
+                                                data={[
+                                                    { name: 'Used', value: quotas?.used_instances || 0 },
+                                                    { name: 'Free', value: Math.max((quotas?.max_instances || 0) - (quotas?.used_instances || 0), 0) }
+                                                ]}
+                                                cx="50%" cy="50%" innerRadius={60} outerRadius={80} paddingAngle={5} dataKey="value" stroke="none"
+                                            >
+                                                <Cell fill="#3b82f6" />
+                                                <Cell fill="#f3f4f6" />
+                                            </Pie>
+                                            <Tooltip contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} />
+                                            <text x="50%" y="50%" textAnchor="middle" dominantBaseline="middle" className="text-2xl font-bold fill-gray-900">
+                                                {quotas?.used_instances || 0}
+                                            </text>
+                                        </RechartsPieChart>
+                                    </ResponsiveContainer>
                                 </div>
                             </div>
 
                             {/* Pie Chart: CPU */}
-                            <div className="apple-card p-8 flex flex-col items-center justify-center text-center">
-                                <div className="w-12 h-12 bg-indigo-50 text-indigo-600 rounded-2xl flex items-center justify-center mb-6">
-                                    <Cpu size={24} />
+                            <div className="apple-card p-6 flex flex-col items-center justify-center text-center shadow-sm">
+                                <div className="w-10 h-10 bg-indigo-50 text-indigo-600 rounded-xl flex items-center justify-center mb-4">
+                                    <Cpu size={20} />
                                 </div>
                                 <h3 className="text-lg font-semibold mb-1">Compute Cores</h3>
-                                <p className="text-gray-500 text-sm mb-6">vCPU block allocation</p>
-                                <div
-                                    className="w-40 h-40 rounded-full flex items-center justify-center mb-6 shadow-sm border border-gray-100 relative"
-                                    style={{
-                                        background: `conic-gradient(#6366f1 ${Math.min(((quotas?.used_vcpu || 0) / (quotas?.max_vcpu || 1)) * 100, 100)}%, #f3f4f6 0)`
-                                    }}
-                                >
-                                    <div className="w-32 h-32 bg-white rounded-full flex items-center justify-center flex-col shadow-inner">
-                                        <span className="text-2xl font-bold text-gray-900">{quotas?.used_vcpu || 0}</span>
-                                        <span className="text-xs text-gray-500 font-medium">/ {quotas?.max_vcpu || 0} CPU</span>
-                                    </div>
+                                <p className="text-gray-500 text-sm mb-4">vCPU block allocation</p>
+                                <div className="h-48 w-full">
+                                    <ResponsiveContainer width="100%" height="100%">
+                                        <RechartsPieChart>
+                                            <Pie
+                                                data={[
+                                                    { name: 'Used', value: quotas?.used_vcpu || 0 },
+                                                    { name: 'Free', value: Math.max((quotas?.max_vcpu || 0) - (quotas?.used_vcpu || 0), 0) }
+                                                ]}
+                                                cx="50%" cy="50%" innerRadius={60} outerRadius={80} paddingAngle={5} dataKey="value" stroke="none"
+                                            >
+                                                <Cell fill="#6366f1" />
+                                                <Cell fill="#f3f4f6" />
+                                            </Pie>
+                                            <Tooltip contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} />
+                                            <text x="50%" y="50%" textAnchor="middle" dominantBaseline="middle" className="text-2xl font-bold fill-gray-900">
+                                                {quotas?.used_vcpu || 0}
+                                            </text>
+                                        </RechartsPieChart>
+                                    </ResponsiveContainer>
                                 </div>
                             </div>
 
                             {/* Pie Chart: RAM */}
-                            <div className="apple-card p-8 flex flex-col items-center justify-center text-center">
-                                <div className="w-12 h-12 bg-purple-50 text-purple-600 rounded-2xl flex items-center justify-center mb-6">
-                                    <Activity size={24} />
+                            <div className="apple-card p-6 flex flex-col items-center justify-center text-center shadow-sm">
+                                <div className="w-10 h-10 bg-purple-50 text-purple-600 rounded-xl flex items-center justify-center mb-4">
+                                    <Activity size={20} />
                                 </div>
                                 <h3 className="text-lg font-semibold mb-1">Memory</h3>
-                                <p className="text-gray-500 text-sm mb-6">RAM allocation in GB</p>
-                                <div
-                                    className="w-40 h-40 rounded-full flex items-center justify-center mb-6 shadow-sm border border-gray-100 relative"
-                                    style={{
-                                        background: `conic-gradient(#a855f7 ${Math.min(((quotas?.used_ram || 0) / (quotas?.max_ram_mb || 1)) * 100, 100)}%, #f3f4f6 0)`
-                                    }}
-                                >
-                                    <div className="w-32 h-32 bg-white rounded-full flex items-center justify-center flex-col shadow-inner">
-                                        <span className="text-2xl font-bold text-gray-900">{((quotas?.used_ram || 0) / 1024).toFixed(1)}</span>
-                                        <span className="text-xs text-gray-500 font-medium">/ {((quotas?.max_ram_mb || 1) / 1024).toFixed(1)} GB</span>
-                                    </div>
+                                <p className="text-gray-500 text-sm mb-4">RAM allocation in GB</p>
+                                <div className="h-48 w-full">
+                                    <ResponsiveContainer width="100%" height="100%">
+                                        <RechartsPieChart>
+                                            <Pie
+                                                data={[
+                                                    { name: 'Used', value: Number(((quotas?.used_ram || 0) / 1024).toFixed(1)) },
+                                                    { name: 'Free', value: Number((Math.max((quotas?.max_ram_mb || 0) - (quotas?.used_ram || 0), 0) / 1024).toFixed(1)) }
+                                                ]}
+                                                cx="50%" cy="50%" innerRadius={60} outerRadius={80} paddingAngle={5} dataKey="value" stroke="none"
+                                            >
+                                                <Cell fill="#a855f7" />
+                                                <Cell fill="#f3f4f6" />
+                                            </Pie>
+                                            <Tooltip contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} />
+                                            <text x="50%" y="50%" textAnchor="middle" dominantBaseline="middle" className="text-2xl font-bold fill-gray-900">
+                                                {((quotas?.used_ram || 0) / 1024).toFixed(1)}
+                                            </text>
+                                        </RechartsPieChart>
+                                    </ResponsiveContainer>
                                 </div>
+                            </div>
+                        </div>
+
+                        {/* Bar Chart: Simulated Billing / Credits usage */}
+                        <div className="apple-card p-6 shadow-sm">
+                            <h3 className="text-lg font-semibold mb-2">Estimated Costs (Simulated)</h3>
+                            <p className="text-gray-500 text-sm mb-6">Daily resource consumption measured in cloud credits</p>
+                            <div className="h-72 w-full">
+                                <ResponsiveContainer width="100%" height="100%">
+                                    <BarChart
+                                        data={Array.from({ length: 14 }).map((_, i) => {
+                                            const d = new Date();
+                                            d.setDate(d.getDate() - (13 - i));
+                                            return {
+                                                date: d.toLocaleDateString([], { month: 'short', day: 'numeric' }),
+                                                credits: Math.floor(Math.random() * 50 + 10) + (quotas?.used_vcpu || 0) * 5
+                                            };
+                                        })}
+                                        margin={{ top: 10, right: 10, left: -20, bottom: 0 }}
+                                    >
+                                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f3f4f6" />
+                                        <XAxis dataKey="date" stroke="#9ca3af" fontSize={12} tickMargin={10} axisLine={false} tickLine={false} />
+                                        <YAxis stroke="#9ca3af" fontSize={12} axisLine={false} tickLine={false} />
+                                        <Tooltip
+                                            cursor={{ fill: '#f3f4f6' }}
+                                            contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
+                                            formatter={(value) => [`${value} Credits`, 'Cost']}
+                                        />
+                                        <Bar dataKey="credits" fill="#0ea5e9" radius={[4, 4, 0, 0]} barSize={32} />
+                                    </BarChart>
+                                </ResponsiveContainer>
                             </div>
                         </div>
 
@@ -550,6 +619,13 @@ export default function Dashboard() {
                 onClose={() => setTerminalInstance(null)}
                 instanceId={terminalInstance?.id}
                 instanceName={terminalInstance?.name}
+            />
+
+            <InstanceMonitoringModal
+                isOpen={!!monitoringInstance}
+                onClose={() => setMonitoringInstance(null)}
+                instanceId={monitoringInstance?.id}
+                instanceName={monitoringInstance?.name}
             />
         </div>
     );
