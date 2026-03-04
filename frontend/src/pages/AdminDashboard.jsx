@@ -263,10 +263,11 @@ export default function AdminDashboard() {
                                                         {m.email}
                                                         <button
                                                             onClick={() => handleToggleOwner(tenant.id, m.user_id)}
-                                                            className={`transition-colors p-0.5 rounded ${m.is_owner ? 'text-amber-500 hover:bg-amber-50' : 'text-gray-300 hover:text-amber-500 hover:bg-gray-50'}`}
+                                                            className={`ml-1 flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] uppercase tracking-wider font-bold transition-colors border ${m.is_owner ? 'bg-amber-50 text-amber-600 border-amber-200' : 'bg-gray-50 text-gray-400 hover:text-amber-600 hover:border-amber-200 border-transparent'}`}
                                                             title={m.is_owner ? "Remove owner status" : "Make owner"}
                                                         >
-                                                            <Star size={12} className={m.is_owner ? "fill-amber-500" : ""} />
+                                                            <Star size={10} className={m.is_owner ? "fill-amber-500" : ""} />
+                                                            {m.is_owner ? 'Owner' : 'Set Owner'}
                                                         </button>
                                                         <button
                                                             onClick={() => handleRemoveMember(tenant.id, m.user_id, m.email)}
