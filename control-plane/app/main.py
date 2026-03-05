@@ -3,9 +3,9 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.database import engine
 from app.models.base import Base
 
-from app.routers import auth, instances, admin, terminal
+from app.routers import auth, instances, admin, terminal, billing
 
-app = FastAPI(title="Hackathon IaaS API", version="1.0.0")
+app = FastAPI(title="Тучка МТС — IaaS API", version="1.0.0")
 
 app.add_middleware(
     CORSMiddleware,
@@ -32,6 +32,7 @@ app.include_router(auth.router, prefix="/api/v1")
 app.include_router(instances.router, prefix="/api/v1")
 app.include_router(admin.router, prefix="/api/v1")
 app.include_router(terminal.router, prefix="/api/v1")
+app.include_router(billing.router, prefix="/api/v1/billing")
 
 @app.get("/health")
 def health_check():

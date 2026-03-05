@@ -3,6 +3,13 @@
 @tailwind utilities;
 
 @layer base {
+  :root {
+    --mts-red: #E30611;
+    --mts-red-hover: #c70510;
+    --mts-red-light: #fef2f2;
+    --mts-dark: #1a1a1a;
+  }
+
   body {
     @apply bg-gray-50 text-gray-900 font-sans antialiased;
   }
@@ -12,13 +19,27 @@
   .apple-card {
     @apply bg-white rounded-3xl shadow-sm border border-gray-100 p-6 transition-all duration-200 hover:shadow-md;
   }
+
   .apple-button {
-    @apply px-4 py-2 bg-black text-white rounded-full font-medium text-sm hover:bg-gray-800 transition-colors disabled:opacity-50 disabled:cursor-not-allowed;
+    @apply px-4 py-2 text-white rounded-full font-medium text-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed;
+    background-color: var(--mts-red);
   }
+
+  .apple-button:hover:not(:disabled) {
+    background-color: var(--mts-red-hover);
+  }
+
   .apple-button-secondary {
     @apply px-4 py-2 bg-gray-100 text-gray-900 rounded-full font-medium text-sm hover:bg-gray-200 transition-colors disabled:opacity-50 disabled:cursor-not-allowed;
   }
+
   .apple-input {
-    @apply w-full px-4 py-3 rounded-2xl bg-gray-50 border border-gray-200 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all;
+    @apply w-full px-4 py-3 rounded-2xl bg-gray-50 border border-gray-200 focus:bg-white focus:outline-none focus:ring-2 focus:border-red-500 transition-all;
+    --tw-ring-color: rgba(227, 6, 17, 0.2);
+  }
+
+  .apple-input:focus {
+    --tw-ring-color: rgba(227, 6, 17, 0.2);
+    border-color: var(--mts-red);
   }
 }

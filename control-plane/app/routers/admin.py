@@ -574,3 +574,92 @@ async def resolve_request(
     
     else:
         raise HTTPException(status_code=400, detail="Invalid action. Use 'approve' or 'reject'.")
+
+# ==========================================
+#  BULK ACTIONS
+# ==========================================
+
+class BulkActionRequest(BaseModel):
+    action: str  # "stop_all", "delete_by_image", "stop_tenant"
+    tenant_id: Optional[UUID] = None
+    image_filter: Optional[str] = None
+
+@router.post("/bulk-action")
+async def bulk_action(
+    req: BulkActionRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Perform bulk actions on instances for admin management."""
+    require_admin(current_user)
+    
+    from app.models.base import InstanceStatus
+    from app.grpc_client import stop_instance_via_grpc, delete_instance_via_grpc
+    
+    affected = 0
+    
+    if req.action == "stop_all":
+        # Stop all running instances across the platform
+        query = select(Instance).where(Instance.status == InstanceStatus.RUNNING)
+        result = await db.execute(query)
+        instances = result.scalars().all()
+        
+        for inst in instances:
+            try:
+                await stop_instance_via_grpc(str(inst.id), str(inst.tenant_id))
+                inst.status = InstanceStatus.STOPPED
+                affected += 1
+            except Exception as e:
+                print(f"Failed to stop {inst.name}: {e}")
+        
+        await db.commit()
+        return {"message": f"Stopped {affected} instances", "affected": affected}
+    
+    elif req.action == "stop_tenant":
+        # Stop all running instances in a specific tenant
+        if not req.tenant_id:
+            raise HTTPException(status_code=400, detail="tenant_id is required for stop_tenant action")
+        
+        query = select(Instance).where(
+            Instance.tenant_id == req.tenant_id,
+            Instance.status == InstanceStatus.RUNNING
+        )
+        result = await db.execute(query)
+        instances = result.scalars().all()
+        
+        for inst in instances:
+            try:
+                await stop_instance_via_grpc(str(inst.id), str(inst.tenant_id))
+                inst.status = InstanceStatus.STOPPED
+                affected += 1
+            except Exception as e:
+                print(f"Failed to stop {inst.name}: {e}")
+        
+        await db.commit()
+        return {"message": f"Stopped {affected} instances in tenant", "affected": affected}
+    
+    elif req.action == "delete_by_image":
+        # Delete all instances with a specific image
+        if not req.image_filter:
+            raise HTTPException(status_code=400, detail="image_filter is required for delete_by_image action")
+        
+        query = select(Instance).where(
+            Instance.image.contains(req.image_filter),
+            Instance.status.notin_([InstanceStatus.DELETING, InstanceStatus.FAILED])
+        )
+        result = await db.execute(query)
+        instances = result.scalars().all()
+        
+        for inst in instances:
+            try:
+                await delete_instance_via_grpc(str(inst.id), str(inst.tenant_id))
+                inst.status = InstanceStatus.DELETING
+                affected += 1
+            except Exception as e:
+                print(f"Failed to delete {inst.name}: {e}")
+        
+        await db.commit()
+        return {"message": f"Deleting {affected} instances with image '{req.image_filter}'", "affected": affected}
+    
+    else:
+        raise HTTPException(status_code=400, detail="Invalid action. Use 'stop_all', 'stop_tenant', or 'delete_by_image'.")

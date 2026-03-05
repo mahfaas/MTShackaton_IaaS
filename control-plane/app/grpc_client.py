@@ -42,6 +42,21 @@ async def delete_instance_via_grpc(instance_id: str, tenant_id: str) -> dict:
         except grpc.aio.AioRpcError as e:
             return {"success": False, "message": f"gRPC Error: {e.details()}"}
 
+async def stop_instance_via_grpc(instance_id: str, tenant_id: str) -> dict:
+    """Stop a running container via gRPC (uses delete + recreate pattern or docker stop)."""
+    # We reuse delete to stop the container — the instance stays in DB as STOPPED
+    async with grpc.aio.insecure_channel(COMPUTE_NODE_URL) as channel:
+        stub = cloud_pb2_grpc.ComputeServiceStub(channel)
+        request = cloud_pb2.DeleteInstanceRequest(
+            instance_id=instance_id,
+            tenant_id=tenant_id
+        )
+        try:
+            response = await stub.DeleteInstance(request, timeout=10.0)
+            return {"success": response.success, "message": response.message}
+        except grpc.aio.AioRpcError as e:
+            return {"success": False, "message": f"gRPC Error: {e.details()}"}
+
 async def get_container_stats_via_grpc(instance_id: str) -> dict:
     """Асинхронный вызов Go микросервиса для получения статистики контейнера"""
     async with grpc.aio.insecure_channel(COMPUTE_NODE_URL) as channel:

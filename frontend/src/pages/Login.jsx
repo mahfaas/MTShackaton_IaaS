@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { api } from '../lib/api';
-import { Cloud, Eye, EyeOff } from 'lucide-react';
+import { Eye, EyeOff } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 
 export default function Login() {
@@ -50,11 +50,9 @@ export default function Login() {
         <div className="min-h-screen flex items-center justify-center p-4">
             <div className="apple-card w-full max-w-md p-8">
                 <div className="flex flex-col items-center mb-8">
-                    <div className="w-12 h-12 bg-black text-white rounded-2xl flex items-center justify-center mb-4">
-                        <Cloud size={24} />
-                    </div>
-                    <h1 className="text-2xl font-semibold tracking-tight">Sign in to Cloud</h1>
-                    <p className="text-gray-500 mt-2 text-sm">Welcome back to your infrastructure</p>
+                    <img src="/logo.png" alt="Тучка МТС" className="h-16 mb-4 object-contain" />
+                    <h1 className="text-2xl font-semibold tracking-tight">Вход в Тучку</h1>
+                    <p className="text-gray-500 mt-2 text-sm">Добро пожаловать в облачную платформу</p>
                 </div>
 
                 {error && (
@@ -78,7 +76,7 @@ export default function Login() {
                         />
                     </div>
                     <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1 ml-1">Password</label>
+                        <label className="block text-sm font-medium text-gray-700 mb-1 ml-1">Пароль</label>
                         <div className="relative">
                             <input
                                 type={showPassword ? "text" : "password"}
@@ -105,14 +103,14 @@ export default function Login() {
                         disabled={loading}
                         className="apple-button w-full py-3 mt-4"
                     >
-                        {loading ? 'Signing in...' : 'Sign In'}
+                        {loading ? 'Вход...' : 'Войти'}
                     </button>
                 </form>
 
                 <div className="mt-6 text-center text-sm text-gray-500">
-                    Don't have an account?{' '}
-                    <Link to="/register" className="text-blue-600 hover:text-blue-700 font-medium">
-                        Sign up
+                    Нет аккаунта?{' '}
+                    <Link to="/register" className="font-medium hover:underline" style={{ color: '#E30611' }}>
+                        Зарегистрироваться
                     </Link>
                 </div>
             </div>

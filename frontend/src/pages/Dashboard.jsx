@@ -1,13 +1,17 @@
 import { useState, useEffect } from 'react';
 import { api } from '../lib/api';
 import CreateInstanceModal from '../components/CreateInstanceModal';
-import { Activity, Server, Cpu, LogOut, Plus, CloudRain, Clock, Trash2, PieChart, TerminalSquare, Send, CheckCircle, XCircle, AlertCircle, Play, Square, Camera, Moon, Sunrise, Upload } from 'lucide-react';
+import { Activity, Server, Cpu, LogOut, Plus, Clock, Trash2, PieChart, TerminalSquare, Send, CheckCircle, XCircle, AlertCircle, Play, Square, Camera, Moon, Sunrise, Upload, DollarSign, TrendingUp, Wallet, Phone, Mail, MapPin, MessageCircle } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
 import TerminalModal from '../components/TerminalModal';
 import InstanceMonitoringModal from '../components/InstanceMonitoringModal';
 import BackupManager from '../components/BackupManager';
-import { PieChart as RechartsPieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
+import { PieChart as RechartsPieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, AreaChart, Area, Legend } from 'recharts';
+
+const MTS_RED = '#E30611';
+const MTS_RED_LIGHT = '#fef2f2';
+
 export default function Dashboard() {
     const { user, logout, setUser } = useAuth();
     const navigate = useNavigate();
@@ -20,10 +24,14 @@ export default function Dashboard() {
     const [monitoringInstance, setMonitoringInstance] = useState(null);
     const [backupInstance, setBackupInstance] = useState(null);
 
+    // Billing state
+    const [billingData, setBillingData] = useState(null);
+    const [billingLoading, setBillingLoading] = useState(false);
+
     // Request state
     const [requestMessage, setRequestMessage] = useState('');
     const [requestLoading, setRequestLoading] = useState(false);
-    const [requestStatus, setRequestStatus] = useState(null); // null, 'PENDING', 'APPROVED', 'REJECTED'
+    const [requestStatus, setRequestStatus] = useState(null);
     const [requestInfo, setRequestInfo] = useState(null);
 
     const hasTenant = !!user?.tenant_id;
@@ -38,7 +46,6 @@ export default function Dashboard() {
                 setInstances(instancesRes.data || []);
                 setQuotas(quotasRes.data);
             } else {
-                // Check request status
                 try {
                     const res = await api.get('/instances/my-request');
                     setRequestStatus(res.data.status);
@@ -52,7 +59,19 @@ export default function Dashboard() {
         }
     };
 
-    // Re-check user data periodically if no tenant (in case admin assigns)
+    const fetchBilling = async () => {
+        if (!hasTenant || !user?.tenant_id) return;
+        setBillingLoading(true);
+        try {
+            const res = await api.get(`/billing/tenant/${user.tenant_id}`);
+            setBillingData(res.data);
+        } catch (err) {
+            console.error("Failed to load billing:", err);
+        } finally {
+            setBillingLoading(false);
+        }
+    };
+
     const refreshUser = async () => {
         if (!hasTenant) {
             try {
@@ -72,6 +91,12 @@ export default function Dashboard() {
         }, 5000);
         return () => clearInterval(interval);
     }, [hasTenant]);
+
+    useEffect(() => {
+        if (activeTab === 'billing') {
+            fetchBilling();
+        }
+    }, [activeTab, hasTenant]);
 
     const handleDelete = async (instanceId) => {
         if (!window.confirm("Are you sure you want to delete this instance?")) return;
@@ -140,7 +165,6 @@ export default function Dashboard() {
             await api.post('/instances/request-access', { message: requestMessage });
             setRequestStatus('PENDING');
             setRequestMessage('');
-            // Refresh user data
             const meRes = await api.get('/auth/me');
             setUser(meRes.data);
         } catch (err) {
@@ -152,7 +176,7 @@ export default function Dashboard() {
 
     if (loading && !quotas && !instances.length) return (
         <div className="min-h-screen flex items-center justify-center bg-gray-50">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-black"></div>
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2" style={{ borderColor: MTS_RED }}></div>
         </div>
     );
 
@@ -166,10 +190,10 @@ export default function Dashboard() {
                     <div className="w-16 h-16 bg-amber-50 text-amber-600 rounded-2xl flex items-center justify-center mx-auto mb-6">
                         <AlertCircle size={32} />
                     </div>
-                    <h1 className="text-2xl font-semibold tracking-tight mb-3">No Tenant Assigned</h1>
+                    <h1 className="text-2xl font-semibold tracking-tight mb-3">Нет назначенного тенанта</h1>
                     <p className="text-gray-500 mb-8 leading-relaxed">
-                        Your account has been created but you haven't been assigned to a tenant yet.
-                        Send a request to the administrator to get access to cloud resources.
+                        Ваш аккаунт создан, но вы ещё не назначены в тенант.
+                        Отправьте запрос администратору для получения доступа к облачным ресурсам.
                     </p>
 
                     {requestStatus === 'PENDING' || user?.has_pending_request ? (
@@ -179,8 +203,8 @@ export default function Dashboard() {
                                     <Clock size={16} />
                                 </div>
                                 <div>
-                                    <div className="font-semibold text-blue-900 text-sm">Request Pending</div>
-                                    <div className="text-blue-600 text-xs">Waiting for administrator approval</div>
+                                    <div className="font-semibold text-blue-900 text-sm">Запрос на рассмотрении</div>
+                                    <div className="text-blue-600 text-xs">Ожидание одобрения администратором</div>
                                 </div>
                             </div>
                             {requestInfo?.message && (
@@ -197,7 +221,7 @@ export default function Dashboard() {
                                         <XCircle size={16} />
                                     </div>
                                     <div>
-                                        <div className="font-semibold text-red-900 text-sm">Request Rejected</div>
+                                        <div className="font-semibold text-red-900 text-sm">Запрос отклонён</div>
                                         {requestInfo?.admin_comment && (
                                             <div className="text-red-600 text-xs mt-1">"{requestInfo.admin_comment}"</div>
                                         )}
@@ -208,7 +232,7 @@ export default function Dashboard() {
                                 <textarea
                                     value={requestMessage}
                                     onChange={(e) => setRequestMessage(e.target.value)}
-                                    placeholder="Describe why you need access..."
+                                    placeholder="Опишите, зачем вам нужен доступ..."
                                     className="apple-input w-full h-24 resize-none"
                                 />
                                 <button
@@ -217,7 +241,7 @@ export default function Dashboard() {
                                     className="apple-button w-full py-3 flex items-center justify-center gap-2"
                                 >
                                     <Send size={16} />
-                                    {requestLoading ? 'Sending...' : 'Send New Request'}
+                                    {requestLoading ? 'Отправка...' : 'Отправить новый запрос'}
                                 </button>
                             </div>
                         </div>
@@ -226,7 +250,7 @@ export default function Dashboard() {
                             <textarea
                                 value={requestMessage}
                                 onChange={(e) => setRequestMessage(e.target.value)}
-                                placeholder="Describe why you need access to cloud resources..."
+                                placeholder="Опишите, зачем вам нужен доступ к облачным ресурсам..."
                                 className="apple-input w-full h-24 resize-none"
                             />
                             <button
@@ -235,15 +259,15 @@ export default function Dashboard() {
                                 className="apple-button w-full py-3 flex items-center justify-center gap-2"
                             >
                                 <Send size={16} />
-                                {requestLoading ? 'Sending...' : 'Request Access'}
+                                {requestLoading ? 'Отправка...' : 'Запросить доступ'}
                             </button>
                         </div>
                     )}
 
                     <div className="mt-6 pt-6 border-t border-gray-100">
-                        <div className="text-xs text-gray-400 mb-3">Logged in as {user?.email}</div>
+                        <div className="text-xs text-gray-400 mb-3">Вы вошли как {user?.email}</div>
                         <button onClick={handleLogout} className="text-sm text-gray-500 hover:text-red-600 transition-colors flex items-center gap-2 mx-auto">
-                            <LogOut size={14} /> Sign Out
+                            <LogOut size={14} /> Выйти
                         </button>
                     </div>
                 </div>
@@ -259,23 +283,36 @@ export default function Dashboard() {
             {/* Mobile Header */}
             <div className="md:hidden bg-white border-b border-gray-100 px-4 py-3 flex items-center justify-between sticky top-0 z-40">
                 <div className="flex items-center gap-3 font-semibold">
-                    <div className="bg-black text-white p-1.5 rounded-lg">
-                        <CloudRain size={16} />
-                    </div>
-                    <span className="text-sm">Cloud Platform</span>
+                    <img src="/logo.png" alt="Тучка МТС" className="h-8 object-contain" />
                 </div>
                 <div className="flex items-center gap-1">
                     <button
                         onClick={() => setActiveTab('compute')}
-                        className={`p-2 rounded-xl transition-colors ${activeTab === 'compute' ? 'bg-black text-white' : 'text-gray-400'}`}
+                        className={`p-2 rounded-xl transition-colors ${activeTab === 'compute' ? 'text-white' : 'text-gray-400'}`}
+                        style={activeTab === 'compute' ? { backgroundColor: MTS_RED } : {}}
                     >
                         <Server size={18} />
                     </button>
                     <button
                         onClick={() => setActiveTab('monitoring')}
-                        className={`p-2 rounded-xl transition-colors ${activeTab === 'monitoring' ? 'bg-black text-white' : 'text-gray-400'}`}
+                        className={`p-2 rounded-xl transition-colors ${activeTab === 'monitoring' ? 'text-white' : 'text-gray-400'}`}
+                        style={activeTab === 'monitoring' ? { backgroundColor: MTS_RED } : {}}
                     >
                         <PieChart size={18} />
+                    </button>
+                    <button
+                        onClick={() => setActiveTab('billing')}
+                        className={`p-2 rounded-xl transition-colors ${activeTab === 'billing' ? 'text-white' : 'text-gray-400'}`}
+                        style={activeTab === 'billing' ? { backgroundColor: MTS_RED } : {}}
+                    >
+                        <Wallet size={18} />
+                    </button>
+                    <button
+                        onClick={() => setActiveTab('contacts')}
+                        className={`p-2 rounded-xl transition-colors ${activeTab === 'contacts' ? 'text-white' : 'text-gray-400'}`}
+                        style={activeTab === 'contacts' ? { backgroundColor: MTS_RED } : {}}
+                    >
+                        <Phone size={18} />
                     </button>
                     <button onClick={handleLogout} className="p-2 text-gray-400 hover:text-red-500 rounded-xl transition-colors ml-1">
                         <LogOut size={18} />
@@ -286,39 +323,52 @@ export default function Dashboard() {
             {/* Desktop Sidebar */}
             <div className="w-64 bg-white border-r border-gray-100 p-6 flex-col hidden md:flex sticky top-0 h-screen">
                 <div className="flex items-center gap-3 font-semibold text-lg mb-2">
-                    <div className="bg-black text-white p-2 rounded-xl">
-                        <CloudRain size={20} />
-                    </div>
-                    <div className="flex flex-col">
-                        <span>Cloud Platform</span>
-                        <span className="text-xs font-normal text-gray-400">{user?.email}</span>
-                    </div>
+                    <img src="/logo.png" alt="Тучка МТС" className="h-10 object-contain" />
                 </div>
-                {user?.tenant_name && (
-                    <div className="mb-8 ml-1">
-                        <span className="text-[11px] font-medium text-gray-400 bg-gray-100 px-2 py-1 rounded-lg">
-                            {user.tenant_name}
-                        </span>
-                    </div>
-                )}
+                <div className="mb-8 ml-1">
+                    <span className="text-xs font-normal text-gray-400">{user?.email}</span>
+                    {user?.tenant_name && (
+                        <div className="mt-1">
+                            <span className="text-[11px] font-medium text-gray-400 bg-gray-100 px-2 py-1 rounded-lg">
+                                {user.tenant_name}
+                            </span>
+                        </div>
+                    )}
+                </div>
 
                 <nav className="flex-1 space-y-2 text-sm font-medium">
                     <button
                         onClick={() => setActiveTab('compute')}
-                        className={`w-full flex items-center gap-3 px-4 py-3 rounded-2xl transition-colors ${activeTab === 'compute' ? 'bg-black text-white' : 'text-gray-500 hover:bg-gray-100 hover:text-gray-900'}`}
+                        className={`w-full flex items-center gap-3 px-4 py-3 rounded-2xl transition-colors ${activeTab === 'compute' ? 'text-white' : 'text-gray-500 hover:bg-gray-100 hover:text-gray-900'}`}
+                        style={activeTab === 'compute' ? { backgroundColor: MTS_RED } : {}}
                     >
                         <Server size={18} /> Compute
                     </button>
                     <button
                         onClick={() => setActiveTab('monitoring')}
-                        className={`w-full flex items-center gap-3 px-4 py-3 rounded-2xl transition-colors ${activeTab === 'monitoring' ? 'bg-black text-white' : 'text-gray-500 hover:bg-gray-100 hover:text-gray-900'}`}
+                        className={`w-full flex items-center gap-3 px-4 py-3 rounded-2xl transition-colors ${activeTab === 'monitoring' ? 'text-white' : 'text-gray-500 hover:bg-gray-100 hover:text-gray-900'}`}
+                        style={activeTab === 'monitoring' ? { backgroundColor: MTS_RED } : {}}
                     >
-                        <PieChart size={18} /> Monitoring
+                        <PieChart size={18} /> Мониторинг
+                    </button>
+                    <button
+                        onClick={() => setActiveTab('billing')}
+                        className={`w-full flex items-center gap-3 px-4 py-3 rounded-2xl transition-colors ${activeTab === 'billing' ? 'text-white' : 'text-gray-500 hover:bg-gray-100 hover:text-gray-900'}`}
+                        style={activeTab === 'billing' ? { backgroundColor: MTS_RED } : {}}
+                    >
+                        <Wallet size={18} /> Биллинг
+                    </button>
+                    <button
+                        onClick={() => setActiveTab('contacts')}
+                        className={`w-full flex items-center gap-3 px-4 py-3 rounded-2xl transition-colors ${activeTab === 'contacts' ? 'text-white' : 'text-gray-500 hover:bg-gray-100 hover:text-gray-900'}`}
+                        style={activeTab === 'contacts' ? { backgroundColor: MTS_RED } : {}}
+                    >
+                        <Phone size={18} /> Контакты
                     </button>
                 </nav>
 
                 <button onClick={handleLogout} className="flex items-center gap-3 px-4 py-3 text-gray-500 hover:text-red-600 hover:bg-red-50 rounded-2xl transition-colors text-sm font-medium mt-auto">
-                    <LogOut size={18} /> Sign Out
+                    <LogOut size={18} /> Выйти
                 </button>
             </div>
 
@@ -328,12 +378,12 @@ export default function Dashboard() {
                     <>
                         <div className="flex justify-between items-end mb-10">
                             <div>
-                                <h1 className="text-3xl font-semibold tracking-tight mb-2">Compute Instances</h1>
-                                <p className="text-gray-500">Manage your virtual infrastructure</p>
+                                <h1 className="text-3xl font-semibold tracking-tight mb-2">Виртуальные машины</h1>
+                                <p className="text-gray-500">Управление вашей облачной инфраструктурой</p>
                             </div>
                             <div className="flex items-center gap-3">
-                                <label className={`apple-button flex items-center gap-2 cursor-pointer bg-white !text-gray-700 border border-gray-200 hover:bg-gray-50 ${quotas?.used_instances >= quotas?.max_instances ? 'opacity-50 pointer-events-none' : ''}`} style={{ background: 'white' }}>
-                                    <Upload size={18} /> Import VM
+                                <label className={`apple-button-secondary flex items-center gap-2 cursor-pointer border border-gray-200 ${quotas?.used_instances >= quotas?.max_instances ? 'opacity-50 pointer-events-none' : ''}`}>
+                                    <Upload size={18} /> Импорт ВМ
                                     <input type="file" accept=".tar,.tar.gz" className="hidden" onChange={handleImport} disabled={quotas?.used_instances >= quotas?.max_instances} />
                                 </label>
                                 <button
@@ -341,7 +391,7 @@ export default function Dashboard() {
                                     className="apple-button flex items-center gap-2"
                                     disabled={quotas?.used_instances >= quotas?.max_instances}
                                 >
-                                    <Plus size={18} /> Deploy Instance
+                                    <Plus size={18} /> Создать ВМ
                                 </button>
                             </div>
                         </div>
@@ -350,21 +400,24 @@ export default function Dashboard() {
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-10">
                             <div className="apple-card p-5">
                                 <div className="text-sm font-medium text-gray-500 mb-4 flex items-center gap-2">
-                                    <Server size={16} /> Active Instances
+                                    <Server size={16} /> Активные ВМ
                                 </div>
                                 <div className="text-3xl font-semibold">{quotas?.used_instances || 0} <span className="text-lg text-gray-400 font-normal">/ {quotas?.max_instances || 0}</span></div>
                                 <div className="mt-4 h-1.5 w-full bg-gray-100 rounded-full overflow-hidden">
                                     <div
-                                        className={`h-full rounded-full transition-all duration-500 ${quotas?.used_instances >= quotas?.max_instances ? 'bg-red-500' : 'bg-blue-500'}`}
-                                        style={{ width: `${Math.min(((quotas?.used_instances || 0) / (quotas?.max_instances || 1)) * 100, 100)}%` }}
+                                        className="h-full rounded-full transition-all duration-500"
+                                        style={{
+                                            width: `${Math.min(((quotas?.used_instances || 0) / (quotas?.max_instances || 1)) * 100, 100)}%`,
+                                            backgroundColor: quotas?.used_instances >= quotas?.max_instances ? '#ef4444' : MTS_RED
+                                        }}
                                     />
                                 </div>
                             </div>
                             <div className="apple-card p-5">
                                 <div className="text-sm font-medium text-gray-500 mb-4 flex items-center gap-2">
-                                    <Cpu size={16} /> vCPU Usage
+                                    <Cpu size={16} /> vCPU
                                 </div>
-                                <div className="text-3xl font-semibold">{quotas?.used_vcpu || 0} <span className="text-lg text-gray-400 font-normal">/ {quotas?.max_vcpu || 0} Cores</span></div>
+                                <div className="text-3xl font-semibold">{quotas?.used_vcpu || 0} <span className="text-lg text-gray-400 font-normal">/ {quotas?.max_vcpu || 0} Ядер</span></div>
                                 <div className="mt-4 h-1.5 w-full bg-gray-100 rounded-full overflow-hidden">
                                     <div
                                         className={`h-full rounded-full transition-all duration-500 ${quotas?.used_vcpu >= quotas?.max_vcpu ? 'bg-red-500' : 'bg-indigo-500'}`}
@@ -374,7 +427,7 @@ export default function Dashboard() {
                             </div>
                             <div className="apple-card p-5">
                                 <div className="text-sm font-medium text-gray-500 mb-4 flex items-center gap-2">
-                                    <Activity size={16} /> RAM Usage
+                                    <Activity size={16} /> RAM
                                 </div>
                                 <div className="text-3xl font-semibold">{((quotas?.used_ram || 0) / 1024).toFixed(1)} <span className="text-lg text-gray-400 font-normal">/ {((quotas?.max_ram_mb || 0) / 1024).toFixed(1)} GB</span></div>
                                 <div className="mt-4 h-1.5 w-full bg-gray-100 rounded-full overflow-hidden">
@@ -391,13 +444,13 @@ export default function Dashboard() {
                             <table className="w-full text-left text-sm whitespace-nowrap">
                                 <thead className="bg-gray-50/50 text-gray-500 font-medium border-b border-gray-100">
                                     <tr>
-                                        <th className="px-4 py-3">Name</th>
-                                        <th className="px-4 py-3">Status</th>
-                                        <th className="px-4 py-3">Specs</th>
-                                        <th className="px-4 py-3">Tags</th>
-                                        <th className="px-4 py-3">IP / Access</th>
-                                        <th className="px-4 py-3">Created</th>
-                                        <th className="px-4 py-3 text-right">Actions</th>
+                                        <th className="px-4 py-3">Имя</th>
+                                        <th className="px-4 py-3">Статус</th>
+                                        <th className="px-4 py-3">Конфигурация</th>
+                                        <th className="px-4 py-3">Теги</th>
+                                        <th className="px-4 py-3">IP / Доступ</th>
+                                        <th className="px-4 py-3">Создано</th>
+                                        <th className="px-4 py-3 text-right">Действия</th>
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y divide-gray-100">
@@ -433,7 +486,8 @@ export default function Dashboard() {
                                                         href={`/api/v1/instances/${inst.id}/proxy/`}
                                                         target="_blank"
                                                         rel="noopener noreferrer"
-                                                        className="text-blue-600 hover:text-blue-800 underline font-semibold"
+                                                        className="hover:underline font-semibold"
+                                                        style={{ color: MTS_RED }}
                                                     >
                                                         🌐 Web App
                                                     </a>
@@ -450,7 +504,7 @@ export default function Dashboard() {
                                                         <button
                                                             onClick={() => handleStart(inst.id)}
                                                             className="p-2 text-gray-400 hover:text-green-600 hover:bg-green-50 rounded-lg transition-colors"
-                                                            title="Start Instance"
+                                                            title="Запустить"
                                                         >
                                                             <Play size={16} />
                                                         </button>
@@ -459,7 +513,7 @@ export default function Dashboard() {
                                                         <button
                                                             onClick={() => handleWake(inst.id)}
                                                             className="p-2 text-purple-400 hover:text-purple-600 hover:bg-purple-50 rounded-lg transition-colors animate-pulse"
-                                                            title="Wake Up Instance"
+                                                            title="Разбудить"
                                                         >
                                                             <Sunrise size={16} />
                                                         </button>
@@ -468,7 +522,7 @@ export default function Dashboard() {
                                                         <button
                                                             onClick={() => handleStop(inst.id)}
                                                             className="p-2 text-gray-400 hover:text-amber-600 hover:bg-amber-50 rounded-lg transition-colors"
-                                                            title="Stop Instance"
+                                                            title="Остановить"
                                                         >
                                                             <Square size={16} />
                                                         </button>
@@ -477,7 +531,7 @@ export default function Dashboard() {
                                                         <button
                                                             onClick={() => setTerminalInstance(inst)}
                                                             className="p-2 text-gray-400 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors"
-                                                            title="Open Terminal"
+                                                            title="Терминал"
                                                         >
                                                             <TerminalSquare size={16} />
                                                         </button>
@@ -486,7 +540,7 @@ export default function Dashboard() {
                                                         <button
                                                             onClick={() => setMonitoringInstance(inst)}
                                                             className="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
-                                                            title="Monitoring"
+                                                            title="Мониторинг"
                                                         >
                                                             <Activity size={16} />
                                                         </button>
@@ -495,7 +549,7 @@ export default function Dashboard() {
                                                         <button
                                                             onClick={() => setBackupInstance(inst)}
                                                             className="p-2 text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"
-                                                            title="Snapshots"
+                                                            title="Снапшоты"
                                                         >
                                                             <Camera size={16} />
                                                         </button>
@@ -504,7 +558,7 @@ export default function Dashboard() {
                                                         onClick={() => handleDelete(inst.id)}
                                                         disabled={inst.status === 'DELETING' || inst.status === 'DELETED'}
                                                         className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                                                        title="Delete Instance"
+                                                        title="Удалить"
                                                     >
                                                         <Trash2 size={16} />
                                                     </button>
@@ -515,7 +569,7 @@ export default function Dashboard() {
                                     {instances.length === 0 && (
                                         <tr>
                                             <td colSpan="7" className="px-6 py-12 text-center text-gray-500">
-                                                No instances deployed yet. Click "Deploy Instance" to get started.
+                                                Нет развёрнутых ВМ. Нажмите «Создать ВМ» чтобы начать.
                                             </td>
                                         </tr>
                                     )}
@@ -523,34 +577,34 @@ export default function Dashboard() {
                             </table>
                         </div>
                     </>
-                ) : (
+                ) : activeTab === 'monitoring' ? (
                     <>
                         <div className="flex justify-between items-end mb-10">
                             <div>
-                                <h1 className="text-3xl font-semibold tracking-tight mb-2">Monitoring & Quotas</h1>
-                                <p className="text-gray-500">Real-time resource allocation and consumption</p>
+                                <h1 className="text-3xl font-semibold tracking-tight mb-2">Мониторинг и квоты</h1>
+                                <p className="text-gray-500">Распределение и потребление ресурсов в реальном времени</p>
                             </div>
                         </div>
 
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-8 mb-8">
                             {/* Pie Chart: Instances */}
                             <div className="apple-card p-6 flex flex-col items-center justify-center text-center shadow-sm">
-                                <div className="w-10 h-10 bg-blue-50 text-blue-600 rounded-xl flex items-center justify-center mb-4">
+                                <div className="w-10 h-10 rounded-xl flex items-center justify-center mb-4" style={{ backgroundColor: MTS_RED_LIGHT, color: MTS_RED }}>
                                     <Server size={20} />
                                 </div>
-                                <h3 className="text-lg font-semibold mb-1">Instances</h3>
-                                <p className="text-gray-500 text-sm mb-4">Virtual machines running</p>
+                                <h3 className="text-lg font-semibold mb-1">Инстансы</h3>
+                                <p className="text-gray-500 text-sm mb-4">Запущенные виртуальные машины</p>
                                 <div className="h-48 w-full">
                                     <ResponsiveContainer width="100%" height="100%">
                                         <RechartsPieChart>
                                             <Pie
                                                 data={[
-                                                    { name: 'Used', value: quotas?.used_instances || 0 },
-                                                    { name: 'Free', value: Math.max((quotas?.max_instances || 0) - (quotas?.used_instances || 0), 0) }
+                                                    { name: 'Используется', value: quotas?.used_instances || 0 },
+                                                    { name: 'Свободно', value: Math.max((quotas?.max_instances || 0) - (quotas?.used_instances || 0), 0) }
                                                 ]}
                                                 cx="50%" cy="50%" innerRadius={60} outerRadius={80} paddingAngle={5} dataKey="value" stroke="none"
                                             >
-                                                <Cell fill="#3b82f6" />
+                                                <Cell fill={MTS_RED} />
                                                 <Cell fill="#f3f4f6" />
                                             </Pie>
                                             <Tooltip contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} />
@@ -567,15 +621,15 @@ export default function Dashboard() {
                                 <div className="w-10 h-10 bg-indigo-50 text-indigo-600 rounded-xl flex items-center justify-center mb-4">
                                     <Cpu size={20} />
                                 </div>
-                                <h3 className="text-lg font-semibold mb-1">Compute Cores</h3>
-                                <p className="text-gray-500 text-sm mb-4">vCPU block allocation</p>
+                                <h3 className="text-lg font-semibold mb-1">Вычислительные ядра</h3>
+                                <p className="text-gray-500 text-sm mb-4">Распределение vCPU</p>
                                 <div className="h-48 w-full">
                                     <ResponsiveContainer width="100%" height="100%">
                                         <RechartsPieChart>
                                             <Pie
                                                 data={[
-                                                    { name: 'Used', value: quotas?.used_vcpu || 0 },
-                                                    { name: 'Free', value: Math.max((quotas?.max_vcpu || 0) - (quotas?.used_vcpu || 0), 0) }
+                                                    { name: 'Используется', value: quotas?.used_vcpu || 0 },
+                                                    { name: 'Свободно', value: Math.max((quotas?.max_vcpu || 0) - (quotas?.used_vcpu || 0), 0) }
                                                 ]}
                                                 cx="50%" cy="50%" innerRadius={60} outerRadius={80} paddingAngle={5} dataKey="value" stroke="none"
                                             >
@@ -596,15 +650,15 @@ export default function Dashboard() {
                                 <div className="w-10 h-10 bg-purple-50 text-purple-600 rounded-xl flex items-center justify-center mb-4">
                                     <Activity size={20} />
                                 </div>
-                                <h3 className="text-lg font-semibold mb-1">Memory</h3>
-                                <p className="text-gray-500 text-sm mb-4">RAM allocation in GB</p>
+                                <h3 className="text-lg font-semibold mb-1">Память</h3>
+                                <p className="text-gray-500 text-sm mb-4">Распределение RAM в GB</p>
                                 <div className="h-48 w-full">
                                     <ResponsiveContainer width="100%" height="100%">
                                         <RechartsPieChart>
                                             <Pie
                                                 data={[
-                                                    { name: 'Used', value: Number(((quotas?.used_ram || 0) / 1024).toFixed(1)) },
-                                                    { name: 'Free', value: Number((Math.max((quotas?.max_ram_mb || 0) - (quotas?.used_ram || 0), 0) / 1024).toFixed(1)) }
+                                                    { name: 'Используется', value: Number(((quotas?.used_ram || 0) / 1024).toFixed(1)) },
+                                                    { name: 'Свободно', value: Number((Math.max((quotas?.max_ram_mb || 0) - (quotas?.used_ram || 0), 0) / 1024).toFixed(1)) }
                                                 ]}
                                                 cx="50%" cy="50%" innerRadius={60} outerRadius={80} paddingAngle={5} dataKey="value" stroke="none"
                                             >
@@ -620,40 +674,255 @@ export default function Dashboard() {
                                 </div>
                             </div>
                         </div>
-
-                        {/* Bar Chart: Simulated Billing / Credits usage */}
-                        <div className="apple-card p-6 shadow-sm">
-                            <h3 className="text-lg font-semibold mb-2">Estimated Costs (Simulated)</h3>
-                            <p className="text-gray-500 text-sm mb-6">Daily resource consumption measured in cloud credits</p>
-                            <div className="h-72 w-full">
-                                <ResponsiveContainer width="100%" height="100%">
-                                    <BarChart
-                                        data={Array.from({ length: 14 }).map((_, i) => {
-                                            const d = new Date();
-                                            d.setDate(d.getDate() - (13 - i));
-                                            return {
-                                                date: d.toLocaleDateString([], { month: 'short', day: 'numeric' }),
-                                                credits: Math.floor(Math.random() * 50 + 10) + (quotas?.used_vcpu || 0) * 5
-                                            };
-                                        })}
-                                        margin={{ top: 10, right: 10, left: -20, bottom: 0 }}
-                                    >
-                                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f3f4f6" />
-                                        <XAxis dataKey="date" stroke="#9ca3af" fontSize={12} tickMargin={10} axisLine={false} tickLine={false} />
-                                        <YAxis stroke="#9ca3af" fontSize={12} axisLine={false} tickLine={false} />
-                                        <Tooltip
-                                            cursor={{ fill: '#f3f4f6' }}
-                                            contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
-                                            formatter={(value) => [`${value} Credits`, 'Cost']}
-                                        />
-                                        <Bar dataKey="credits" fill="#0ea5e9" radius={[4, 4, 0, 0]} barSize={32} />
-                                    </BarChart>
-                                </ResponsiveContainer>
+                    </>
+                ) : activeTab === 'billing' ? (
+                    /* ===== BILLING TAB ===== */
+                    <>
+                        <div className="flex justify-between items-end mb-10">
+                            <div>
+                                <h1 className="text-3xl font-semibold tracking-tight mb-2">Биллинг</h1>
+                                <p className="text-gray-500">Расходы и стоимость ваших облачных ресурсов</p>
                             </div>
                         </div>
 
+                        {billingLoading && !billingData ? (
+                            <div className="flex items-center justify-center py-20">
+                                <div className="animate-spin rounded-full h-8 w-8 border-b-2" style={{ borderColor: MTS_RED }}></div>
+                            </div>
+                        ) : billingData ? (
+                            <>
+                                {/* Billing Summary Cards */}
+                                <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
+                                    <div className="apple-card p-5 border border-red-100 bg-gradient-to-br from-red-50/50 to-white">
+                                        <div className="text-sm font-medium mb-2 flex items-center gap-2" style={{ color: MTS_RED }}>
+                                            <Wallet size={16} /> За месяц
+                                        </div>
+                                        <div className="text-3xl font-bold text-gray-900">{billingData.current_month_total?.toLocaleString()} <span className="text-lg font-medium text-gray-500">BYN</span></div>
+                                    </div>
+                                    <div className="apple-card p-5 border border-orange-100 bg-gradient-to-br from-orange-50/50 to-white">
+                                        <div className="text-orange-600/80 mb-2 flex items-center gap-2 text-sm font-medium">
+                                            <TrendingUp size={16} /> В час
+                                        </div>
+                                        <div className="text-3xl font-bold text-gray-900">{billingData.hourly_rate?.toFixed(2)} <span className="text-lg font-medium text-gray-500">BYN/ч</span></div>
+                                    </div>
+                                    <div className="apple-card p-5 border border-green-100 bg-gradient-to-br from-green-50/50 to-white">
+                                        <div className="text-green-600/80 mb-2 flex items-center gap-2 text-sm font-medium">
+                                            <Server size={16} /> Активные ВМ
+                                        </div>
+                                        <div className="text-3xl font-bold text-gray-900">{billingData.active_instances}</div>
+                                    </div>
+                                    <div className="apple-card p-5 border border-purple-100 bg-gradient-to-br from-purple-50/50 to-white">
+                                        <div className="text-purple-600/80 mb-2 flex items-center gap-2 text-sm font-medium">
+                                            <Moon size={16} /> В гибернации
+                                        </div>
+                                        <div className="text-3xl font-bold text-gray-900">{billingData.hibernating_instances}</div>
+                                    </div>
+                                </div>
+
+                                {/* Spending Chart */}
+                                <div className="apple-card p-6 shadow-sm mb-8">
+                                    <h3 className="text-lg font-semibold mb-1">Расходы за 30 дней</h3>
+                                    <p className="text-xs text-gray-500 mb-6">Ежедневные затраты на облачные ресурсы (BYN)</p>
+                                    <div className="h-72 w-full">
+                                        <ResponsiveContainer width="100%" height="100%">
+                                            <AreaChart data={billingData.graph_data} margin={{ top: 10, right: 10, left: -10, bottom: 0 }}>
+                                                <defs>
+                                                    <linearGradient id="spendGrad" x1="0" y1="0" x2="0" y2="1">
+                                                        <stop offset="5%" stopColor={MTS_RED} stopOpacity={0.3} />
+                                                        <stop offset="95%" stopColor={MTS_RED} stopOpacity={0} />
+                                                    </linearGradient>
+                                                </defs>
+                                                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f3f4f6" />
+                                                <XAxis dataKey="date" stroke="#9ca3af" fontSize={11} tickLine={false} axisLine={false} />
+                                                <YAxis stroke="#9ca3af" fontSize={11} tickLine={false} axisLine={false} />
+                                                <Tooltip
+                                                    contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
+                                                    formatter={(value) => [`${value.toFixed(2)} BYN`, 'Расход']}
+                                                />
+                                                <Area type="monotone" dataKey="spend" stroke={MTS_RED} strokeWidth={2} fillOpacity={1} fill="url(#spendGrad)" />
+                                            </AreaChart>
+                                        </ResponsiveContainer>
+                                    </div>
+                                </div>
+
+                                {/* Pricing Info */}
+                                <div className="apple-card p-6 shadow-sm mb-8">
+                                    <h3 className="text-lg font-semibold mb-4">Тарифы (поминутная оплата)</h3>
+                                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                        <div className="bg-gray-50 rounded-2xl p-4 text-center">
+                                            <div className="text-sm text-gray-500 mb-1">vCPU</div>
+                                            <div className="text-2xl font-bold" style={{ color: MTS_RED }}>{billingData.pricing?.vcpu_per_min} BYN</div>
+                                            <div className="text-xs text-gray-400">за ядро / мин</div>
+                                        </div>
+                                        <div className="bg-gray-50 rounded-2xl p-4 text-center">
+                                            <div className="text-sm text-gray-500 mb-1">RAM</div>
+                                            <div className="text-2xl font-bold text-indigo-600">{billingData.pricing?.ram_gb_per_min} BYN</div>
+                                            <div className="text-xs text-gray-400">за GB / мин</div>
+                                        </div>
+                                        <div className="bg-gray-50 rounded-2xl p-4 text-center">
+                                            <div className="text-sm text-gray-500 mb-1">Хранилище</div>
+                                            <div className="text-2xl font-bold text-purple-600">{billingData.pricing?.storage_gb_per_min} BYN</div>
+                                            <div className="text-xs text-gray-400">за GB / мин</div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {/* Per-Instance Cost Breakdown */}
+                                {billingData.instance_costs && billingData.instance_costs.length > 0 && (
+                                    <div className="apple-card p-0 overflow-hidden overflow-x-auto">
+                                        <div className="px-6 py-4 border-b border-gray-100">
+                                            <h3 className="text-lg font-semibold">Стоимость по инстансам</h3>
+                                            <p className="text-xs text-gray-500 mt-1">Детализация расходов по каждой виртуальной машине</p>
+                                        </div>
+                                        <table className="w-full text-left text-sm whitespace-nowrap">
+                                            <thead className="bg-gray-50/50 text-gray-500 font-medium border-b border-gray-100">
+                                                <tr>
+                                                    <th className="px-6 py-3">Имя</th>
+                                                    <th className="px-6 py-3">Статус</th>
+                                                    <th className="px-6 py-3">Конфигурация</th>
+                                                    <th className="px-6 py-3">BYN/мин</th>
+                                                    <th className="px-6 py-3">BYN/час</th>
+                                                    <th className="px-6 py-3">Время работы</th>
+                                                    <th className="px-6 py-3 text-right">Итого BYN</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody className="divide-y divide-gray-100">
+                                                {billingData.instance_costs.map(ic => (
+                                                    <tr key={ic.id} className="hover:bg-gray-50/50 transition-colors">
+                                                        <td className="px-6 py-3 font-medium text-gray-900">{ic.name}</td>
+                                                        <td className="px-6 py-3">
+                                                            <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium ${ic.status === 'RUNNING' ? 'bg-green-50 text-green-700' :
+                                                                ic.status === 'STOPPED' ? 'bg-gray-100 text-gray-600' :
+                                                                    ic.status === 'HIBERNATING' ? 'bg-purple-50 text-purple-700' :
+                                                                        'bg-amber-50 text-amber-700'
+                                                                }`}>
+                                                                {ic.status}
+                                                            </span>
+                                                        </td>
+                                                        <td className="px-6 py-3 text-gray-500 text-xs">{ic.vcpu} vCPU • {ic.ram_mb >= 1024 ? (ic.ram_mb / 1024) + ' GB' : ic.ram_mb + ' MB'}</td>
+                                                        <td className="px-6 py-3 font-mono text-xs">{ic.cost_per_min.toFixed(4)}</td>
+                                                        <td className="px-6 py-3 font-mono text-xs">{ic.cost_per_hour.toFixed(2)}</td>
+                                                        <td className="px-6 py-3 text-gray-500 text-xs">{Math.round(ic.running_minutes)} мин</td>
+                                                        <td className="px-6 py-3 text-right font-semibold" style={{ color: MTS_RED }}>{ic.total_cost.toLocaleString()} BYN</td>
+                                                    </tr>
+                                                ))}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                )}
+                            </>
+                        ) : (
+                            <div className="text-center py-20 text-gray-500">
+                                <Wallet size={48} className="mx-auto mb-4 text-gray-300" />
+                                <p>Нет данных о биллинге</p>
+                            </div>
+                        )}
                     </>
-                )}
+                ) : activeTab === 'contacts' ? (
+                    /* ===== CONTACTS TAB ===== */
+                    <>
+                        <div className="flex justify-between items-end mb-10">
+                            <div>
+                                <h1 className="text-3xl font-semibold tracking-tight mb-2">Контакты</h1>
+                                <p className="text-gray-500">Связь с администрацией и поддержкой</p>
+                            </div>
+                        </div>
+
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-8">
+                            <div className="apple-card p-8 shadow-sm">
+                                <div className="flex items-center gap-4 mb-6">
+                                    <div className="w-14 h-14 rounded-2xl flex items-center justify-center" style={{ backgroundColor: MTS_RED }}>
+                                        <Phone size={28} className="text-white" />
+                                    </div>
+                                    <div>
+                                        <h3 className="text-lg font-semibold text-gray-900">Техническая поддержка</h3>
+                                        <p className="text-sm text-gray-500">Круглосуточная линия помощи</p>
+                                    </div>
+                                </div>
+                                <div className="space-y-4">
+                                    <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-xl">
+                                        <Phone size={18} className="text-gray-400" />
+                                        <div>
+                                            <div className="text-sm font-medium text-gray-900">8 (800) 250-08-90</div>
+                                            <div className="text-xs text-gray-500">Бесплатно по России</div>
+                                        </div>
+                                    </div>
+                                    <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-xl">
+                                        <Mail size={18} className="text-gray-400" />
+                                        <div>
+                                            <div className="text-sm font-medium text-gray-900">cloud@mts.ru</div>
+                                            <div className="text-xs text-gray-500">Электронная почта поддержки</div>
+                                        </div>
+                                    </div>
+                                    <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-xl">
+                                        <MessageCircle size={18} className="text-gray-400" />
+                                        <div>
+                                            <div className="text-sm font-medium text-gray-900">Telegram: @mts_cloud_support</div>
+                                            <div className="text-xs text-gray-500">Быстрая связь через мессенджер</div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div className="apple-card p-8 shadow-sm">
+                                <div className="flex items-center gap-4 mb-6">
+                                    <div className="w-14 h-14 rounded-2xl bg-indigo-500 flex items-center justify-center">
+                                        <Mail size={28} className="text-white" />
+                                    </div>
+                                    <div>
+                                        <h3 className="text-lg font-semibold text-gray-900">Отдел продаж</h3>
+                                        <p className="text-sm text-gray-500">Подключение и тарифы</p>
+                                    </div>
+                                </div>
+                                <div className="space-y-4">
+                                    <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-xl">
+                                        <Phone size={18} className="text-gray-400" />
+                                        <div>
+                                            <div className="text-sm font-medium text-gray-900">+7 (495) 636-06-36</div>
+                                            <div className="text-xs text-gray-500">Для корпоративных клиентов</div>
+                                        </div>
+                                    </div>
+                                    <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-xl">
+                                        <Mail size={18} className="text-gray-400" />
+                                        <div>
+                                            <div className="text-sm font-medium text-gray-900">sales-cloud@mts.ru</div>
+                                            <div className="text-xs text-gray-500">Запрос на подключение тенанта</div>
+                                        </div>
+                                    </div>
+                                    <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-xl">
+                                        <MapPin size={18} className="text-gray-400" />
+                                        <div>
+                                            <div className="text-sm font-medium text-gray-900">г. Москва, ул. Марксистская, 4</div>
+                                            <div className="text-xs text-gray-500">Центральный офис МТС</div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className="apple-card p-8 shadow-sm">
+                            <h3 className="text-lg font-semibold text-gray-900 mb-2">Как получить тенант для вашей компании?</h3>
+                            <p className="text-gray-500 text-sm mb-6">Если вы представляете новую компанию и хотите подключиться к облачной платформе Тучка МТС:</p>
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                <div className="bg-gray-50 rounded-2xl p-5 text-center">
+                                    <div className="w-10 h-10 rounded-full flex items-center justify-center mx-auto mb-3 text-white font-bold" style={{ backgroundColor: MTS_RED }}>1</div>
+                                    <div className="font-medium text-gray-900 text-sm">Свяжитесь с нами</div>
+                                    <div className="text-xs text-gray-500 mt-1">Напишите на sales-cloud@mts.ru или позвоните</div>
+                                </div>
+                                <div className="bg-gray-50 rounded-2xl p-5 text-center">
+                                    <div className="w-10 h-10 rounded-full flex items-center justify-center mx-auto mb-3 text-white font-bold" style={{ backgroundColor: MTS_RED }}>2</div>
+                                    <div className="font-medium text-gray-900 text-sm">Обсудите потребности</div>
+                                    <div className="text-xs text-gray-500 mt-1">Менеджер подберёт оптимальный тариф</div>
+                                </div>
+                                <div className="bg-gray-50 rounded-2xl p-5 text-center">
+                                    <div className="w-10 h-10 rounded-full flex items-center justify-center mx-auto mb-3 text-white font-bold" style={{ backgroundColor: MTS_RED }}>3</div>
+                                    <div className="font-medium text-gray-900 text-sm">Получите доступ</div>
+                                    <div className="text-xs text-gray-500 mt-1">Администратор создаст тенант и назначит вас</div>
+                                </div>
+                            </div>
+                        </div>
+                    </>
+                ) : null}
             </div>
 
             <CreateInstanceModal

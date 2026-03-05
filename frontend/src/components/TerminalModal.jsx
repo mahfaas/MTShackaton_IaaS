@@ -51,11 +51,14 @@ export default function TerminalModal({ isOpen, onClose, instanceId, instanceNam
                 term.write('\x1b[1;36m⚡ Connecting to server...\x1b[0m\r\n');
             }
 
-            // Connect WebSocket
+            // Connect WebSocket — handle ngrok, proxied, and direct connections
             const token = sessionStorage.getItem('token');
             const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-            const host = window.location.host; // This will use the ngrok URL or LAN IP
+            const host = window.location.host;
+            // For ngrok: use the ngrok host directly with wss
+            // For local dev: vite proxy handles /api -> backend
             const wsUrl = `${protocol}//${host}/api/v1/terminal/ws/${instanceId}?token=${token}`;
+            console.log('[Terminal] Connecting to:', wsUrl);
             const ws = new WebSocket(wsUrl);
             wsRef.current = ws;
 
@@ -76,12 +79,17 @@ export default function TerminalModal({ isOpen, onClose, instanceId, instanceNam
 
             ws.onclose = (event) => {
                 setStatus('disconnected');
-                term.write('\r\n\x1b[1;31m✗ Connection closed\x1b[0m\r\n');
+                term.write(`\r\n\x1b[1;31m✗ Connection closed (code: ${event.code})\x1b[0m\r\n`);
+                if (event.code === 1006) {
+                    term.write('\x1b[33mTip: If using ngrok, ensure WebSocket support is enabled.\x1b[0m\r\n');
+                    term.write('\x1b[33mTry: ngrok http 5173 --scheme http\x1b[0m\r\n');
+                }
             };
 
-            ws.onerror = () => {
+            ws.onerror = (err) => {
                 setStatus('error');
                 term.write('\r\n\x1b[1;31m✗ Connection error\x1b[0m\r\n');
+                console.error('[Terminal] WebSocket error:', err);
             };
 
             // Send user input to WebSocket

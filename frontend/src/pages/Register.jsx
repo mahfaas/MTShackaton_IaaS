@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { api } from '../lib/api';
-import { Cloud, Eye, EyeOff } from 'lucide-react';
+import { Eye, EyeOff } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 
 export default function Register() {
@@ -47,11 +47,9 @@ export default function Register() {
         <div className="min-h-screen flex items-center justify-center p-4">
             <div className="apple-card w-full max-w-md p-8">
                 <div className="flex flex-col items-center mb-8">
-                    <div className="w-12 h-12 bg-black text-white rounded-2xl flex items-center justify-center mb-4">
-                        <Cloud size={24} />
-                    </div>
-                    <h1 className="text-2xl font-semibold tracking-tight">Create an Account</h1>
-                    <p className="text-gray-500 mt-2 text-sm">Join the next-gen Cloud Platform</p>
+                    <img src="/logo.png" alt="Тучка МТС" className="h-16 mb-4 object-contain" />
+                    <h1 className="text-2xl font-semibold tracking-tight">Создать аккаунт</h1>
+                    <p className="text-gray-500 mt-2 text-sm">Присоединяйтесь к облачной платформе Тучка</p>
                 </div>
 
                 {error && (
@@ -76,7 +74,7 @@ export default function Register() {
                         />
                     </div>
                     <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1 ml-1">Password</label>
+                        <label className="block text-sm font-medium text-gray-700 mb-1 ml-1">Пароль</label>
                         <div className="relative">
                             <input
                                 type={showPassword ? "text" : "password"}
@@ -101,15 +99,23 @@ export default function Register() {
                         disabled={loading}
                         className="apple-button w-full py-3 mt-4"
                     >
-                        {loading ? 'Creating account...' : 'Create Account'}
+                        {loading ? 'Создание...' : 'Создать аккаунт'}
                     </button>
                 </form>
 
                 <div className="mt-6 text-center text-sm text-gray-500">
-                    Already have an account?{' '}
-                    <Link to="/login" className="text-blue-600 hover:text-blue-700 font-medium">
-                        Sign in
+                    Уже есть аккаунт?{' '}
+                    <Link to="/login" className="font-medium hover:underline" style={{ color: '#E30611' }}>
+                        Войти
                     </Link>
+                </div>
+
+                <div className="mt-6 pt-6 border-t border-gray-100">
+                    <div className="bg-gray-50 rounded-2xl p-4 text-center">
+                        <p className="text-xs text-gray-500 mb-2">Хотите подключить свою компанию?</p>
+                        <p className="text-sm font-medium text-gray-700 mb-1">📞 8 (800) 250-08-90</p>
+                        <p className="text-xs text-gray-400">Свяжитесь с нами для создания корпоративного тенанта</p>
+                    </div>
                 </div>
             </div>
         </div>
