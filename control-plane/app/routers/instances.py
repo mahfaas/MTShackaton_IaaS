@@ -1,6 +1,10 @@
 from fastapi import APIRouter, Depends, BackgroundTasks, HTTPException, File, UploadFile
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
+import httpx
+from starlette.responses import StreamingResponse
+from starlette.background import BackgroundTask
+from fastapi import Request
 
 from app.database import get_db
 from app.models.base import User, TenantMember, Instance
@@ -258,6 +262,50 @@ async def delete_instance(
         force_db_remove=True
     )
     return {"message": "Instance deletion queued"}
+
+@router.api_route("/{instance_id}/proxy/{path:path}", methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "HEAD", "PATCH"])
+async def proxy_instance(
+    instance_id: str, 
+    path: str, 
+    request: Request, 
+    db: AsyncSession = Depends(get_db)
+):
+    """Proxy HTTP traffic to the instance's internal IP (port 80)."""
+    
+    query = select(Instance).where(Instance.id == instance_id)
+    instance = (await db.execute(query)).scalar_one_or_none()
+    
+    if not instance or not instance.ip_address or "|" not in instance.ip_address:
+        raise HTTPException(status_code=404, detail="Instance IP not found or not running")
+        
+    if instance.status.value != "RUNNING":
+        raise HTTPException(status_code=400, detail="Instance is not running")
+
+    # Extract internal IP (it's stored as e.g. '172.19.0.2|port:32768')
+    internal_ip = instance.ip_address.split("|")[0]
+    
+    url = httpx.URL(f"http://{internal_ip}:80/{path}?{request.url.query}")
+    
+    client = httpx.AsyncClient()
+    req = client.build_request(
+        request.method,
+        url,
+        headers=request.headers.raw,
+        content=request.stream()
+    )
+    
+    r = await client.send(req, stream=True)
+    
+    target_headers = dict(r.headers)
+    target_headers.pop("content-encoding", None)
+    target_headers.pop("content-length", None)
+    
+    return StreamingResponse(
+        r.aiter_raw(),
+        status_code=r.status_code,
+        headers=target_headers,
+        background=BackgroundTask(r.aclose)
+    )
 
 @router.post("/{instance_id}/stop", status_code=202)
 async def stop_instance(

@@ -430,12 +430,12 @@ export default function Dashboard() {
                                             <td className="px-4 py-4 font-mono text-xs">
                                                 {inst.ip_address && inst.ip_address.includes('|port:') ? (
                                                     <a
-                                                        href={`http://localhost:${inst.ip_address.split('|port:')[1]}`}
+                                                        href={`/api/v1/instances/${inst.id}/proxy/`}
                                                         target="_blank"
                                                         rel="noopener noreferrer"
                                                         className="text-blue-600 hover:text-blue-800 underline font-semibold"
                                                     >
-                                                        🌐 :{inst.ip_address.split('|port:')[1]}
+                                                        🌐 Web App
                                                     </a>
                                                 ) : (
                                                     <span className="text-gray-500 text-xs">{inst.ip_address || '—'}</span>

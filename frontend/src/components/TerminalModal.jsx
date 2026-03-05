@@ -53,7 +53,9 @@ export default function TerminalModal({ isOpen, onClose, instanceId, instanceNam
 
             // Connect WebSocket
             const token = sessionStorage.getItem('token');
-            const wsUrl = `ws://localhost:8000/api/v1/terminal/ws/${instanceId}?token=${token}`;
+            const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+            const host = window.location.host; // This will use the ngrok URL or LAN IP
+            const wsUrl = `${protocol}//${host}/api/v1/terminal/ws/${instanceId}?token=${token}`;
             const ws = new WebSocket(wsUrl);
             wsRef.current = ws;
 
@@ -130,8 +132,8 @@ export default function TerminalModal({ isOpen, onClose, instanceId, instanceNam
                     </div>
                     <div className="flex items-center gap-3">
                         <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${status === 'connected' ? 'bg-green-500/20 text-green-400' :
-                                status === 'connecting' ? 'bg-yellow-500/20 text-yellow-400' :
-                                    'bg-red-500/20 text-red-400'
+                            status === 'connecting' ? 'bg-yellow-500/20 text-yellow-400' :
+                                'bg-red-500/20 text-red-400'
                             }`}>
                             {status === 'connected' ? '● Connected' :
                                 status === 'connecting' ? '○ Connecting...' :
