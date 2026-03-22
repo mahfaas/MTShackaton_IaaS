@@ -3,7 +3,7 @@
   
   # ☁️ Тучка МТС — Облачная Платформа (IaaS)
   
-  **Полнофункциональная облачная инфраструктура как услуга с मुльтитенантностью, биллингом и веб-терминалом**
+  **Полнофункциональная облачная инфраструктура как услуга с мультитенантностью, биллингом и веб-терминалом**
   
   ![React](https://img.shields.io/badge/React-20232A?style=for-the-badge&logo=react&logoColor=61DAFB)
   ![Vite](https://img.shields.io/badge/Vite-B73BFE?style=for-the-badge&logo=vite&logoColor=FFD62E)
